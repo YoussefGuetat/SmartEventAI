@@ -11,8 +11,8 @@ pipeline {
         GITHUB_REPO_URL = 'https://github.com/YoussefGuetat/SmartEventAI.git'
         GIT_BRANCH = 'main'
         GITHUB_CREDENTIALS = 'github_credentials'
-        DOCKER_HUB_CREDENTIALS = 'guetatyoussef'
-        DOCKERHUB_NAMESPACE = 'smarteventai'
+        DOCKER_HUB_CREDENTIALS = 'dockerhubcr'
+        DOCKERHUB_NAMESPACE = 'guetatyoussef'
 
         // Downstream
         DOWNSTREAM_PIPELINE = 'SmartEvent_CD'
