@@ -1,0 +1,41 @@
+<div class="modal-overlay" (click)="close()">
+  <div class="modal-container" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>
+        <i class="fas fa-sparkles me-2"></i>
+        Contenu marketing généré
+      </h2>
+      <button type="button" class="close-btn" (click)="close()">
+        <span>&times;</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <div class="marketing-content">
+        <div class="content-box">
+          <p>{{ marketingContent }}</p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" (click)="close()">
+          Fermer
+        </button>
+        <button type="button" class="btn btn-primary" (click)="copyToClipboard()">
+          @if (copied) {
+            <span>
+              <i class="fas fa-check me-2"></i>
+              Copié !
+            </span>
+          }
+          @if (!copied) {
+            <span>
+              <i class="fas fa-copy me-2"></i>
+              Copier
+            </span>
+          }
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

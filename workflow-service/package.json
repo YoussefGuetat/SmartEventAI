@@ -1,0 +1,15 @@
+{
+  "name": "workflow-service",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@types/eureka-js-client": "^4.5.9",
+    "axios": "^1.13.2",
+    "eureka-js-client": "^4.5.0",
+    "express": "^5.1.0"
+  }
+}

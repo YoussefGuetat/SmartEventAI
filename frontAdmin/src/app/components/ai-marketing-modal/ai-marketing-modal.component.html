@@ -1,0 +1,99 @@
+<div class="modal-overlay" (click)="close()">
+  <div class="modal-container" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>
+        <i class="fas fa-bullhorn me-2"></i>
+        Générer du contenu marketing
+      </h2>
+      <button type="button" class="close-btn" (click)="close()">
+        <span>&times;</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <form [formGroup]="generateForm" (ngSubmit)="onSubmit()">
+        <p class="text-muted mb-4">
+          Fournissez quelques informations de base et l'IA générera automatiquement un texte marketing accrocheur pour promouvoir votre événement.
+        </p>
+
+        <!-- Titre de l'événement -->
+        <div class="form-group">
+          <label for="title">Titre de l'événement *</label>
+          <input
+            type="text"
+            id="title"
+            formControlName="title"
+            class="form-control"
+            placeholder="Ex: Salon de l'Innovation 2025"
+          />
+          @if (generateForm.get('title')?.invalid && generateForm.get('title')?.touched) {
+            <span class="error-message">
+              {{ getErrorMessage('title') }}
+            </span>
+          }
+        </div>
+
+        <!-- Lieu -->
+        <div class="form-group">
+          <label for="location">Lieu *</label>
+          <input
+            type="text"
+            id="location"
+            formControlName="location"
+            class="form-control"
+            placeholder="Ex: Lyon"
+          />
+          @if (generateForm.get('location')?.invalid && generateForm.get('location')?.touched) {
+            <span class="error-message">
+              {{ getErrorMessage('location') }}
+            </span>
+          }
+        </div>
+
+        <!-- Date -->
+        <div class="form-group">
+          <label for="eventDate">Date de l'événement *</label>
+          <input
+            type="date"
+            id="eventDate"
+            formControlName="eventDate"
+            class="form-control"
+          />
+          @if (generateForm.get('eventDate')?.invalid && generateForm.get('eventDate')?.touched) {
+            <span class="error-message">
+              {{ getErrorMessage('eventDate') }}
+            </span>
+          }
+        </div>
+
+        <!-- Message d'erreur -->
+        @if (errorMessage) {
+          <div class="alert alert-danger">
+            {{ errorMessage }}
+          </div>
+        }
+
+        <!-- Boutons d'action -->
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="close()" [disabled]="isGenerating">
+            Annuler
+          </button>
+          <button type="submit" class="btn btn-success" [disabled]="isGenerating || generateForm.invalid">
+            @if (isGenerating) {
+              <span>
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                Génération en cours...
+              </span>
+            }
+            @if (!isGenerating) {
+              <span>
+                <i class="fas fa-bullhorn me-2"></i>
+                Générer le marketing
+              </span>
+            }
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

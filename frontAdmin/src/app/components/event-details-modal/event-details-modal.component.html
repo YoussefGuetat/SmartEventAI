@@ -1,0 +1,58 @@
+<div class="modal-overlay" (click)="close()">
+  <div class="modal-container" (click)="$event.stopPropagation()">
+    @if (event) {
+      <div class="modal-header">
+        <h2>{{ event.titleEvenement }}</h2>
+        <button type="button" class="close-btn" (click)="close()">
+          <span>&times;</span>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="detail-section">
+          <div class="detail-item">
+            <label><i class="fas fa-calendar me-2"></i>Date et heure</label>
+            <p>{{ event.dateEvenement | date:'dd/MM/yyyy à HH:mm' }}</p>
+          </div>
+
+          <div class="detail-item">
+            <label><i class="fas fa-map-marker-alt me-2"></i>Lieu</label>
+            <p>{{ event.location }}</p>
+          </div>
+
+          <div class="detail-item">
+            <label><i class="fas fa-info-circle me-2"></i>Statut</label>
+            <p>
+              <span [class]="'badge bg-' + getStatusBadgeClass(event.statusEvenement)">
+                {{ getStatusLabel(event.statusEvenement) }}
+              </span>
+            </p>
+          </div>
+
+          <div class="detail-item">
+            <label><i class="fas fa-align-left me-2"></i>Description</label>
+            <p class="description">{{ event.descriptionEvenement }}</p>
+          </div>
+
+          <div class="detail-item">
+            <label><i class="fas fa-list-ol me-2"></i>Agenda</label>
+            <pre class="agenda">{{ event.agenda }}</pre>
+          </div>
+
+          @if (event.organizerId) {
+            <div class="detail-item">
+              <label><i class="fas fa-user me-2"></i>ID Organisateur</label>
+              <p>{{ event.organizerId }}</p>
+            </div>
+          }
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" (click)="close()">
+            Fermer
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+</div>

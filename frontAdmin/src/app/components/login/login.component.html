@@ -1,0 +1,57 @@
+<div class="login-container">
+  <div class="login-card">
+    <div class="login-header">
+      <h1>SmartEvent AI</h1>
+      <p>Connectez-vous à votre compte</p>
+    </div>
+
+    <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input
+          type="email"
+          id="email"
+          formControlName="email"
+          class="form-control"
+          placeholder="votre.email@example.com"
+        />
+        @if (loginForm.get('email')?.invalid && loginForm.get('email')?.touched) {
+          <span class="error-message">
+            {{ getErrorMessage('email') }}
+          </span>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="password">Mot de passe</label>
+        <input
+          type="password"
+          id="password"
+          formControlName="password"
+          class="form-control"
+          placeholder="Votre mot de passe"
+        />
+        @if (loginForm.get('password')?.invalid && loginForm.get('password')?.touched) {
+          <span class="error-message">
+            {{ getErrorMessage('password') }}
+          </span>
+        }
+      </div>
+
+      @if (errorMessage) {
+        <div class="alert alert-danger">
+          {{ errorMessage }}
+        </div>
+      }
+
+      <button type="submit" class="btn btn-primary btn-block" [disabled]="isSubmitting || loginForm.invalid">
+        @if (isSubmitting) {
+          <span>Connexion en cours...</span>
+        }
+        @if (!isSubmitting) {
+          <span>Se connecter</span>
+        }
+      </button>
+    </form>
+  </div>
+</div>

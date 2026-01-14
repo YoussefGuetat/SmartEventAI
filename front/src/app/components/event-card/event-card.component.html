@@ -1,0 +1,9 @@
+<div class="event-card" (click)="onCardClick()">
+    <div class="event-card-header">
+        <h2>{{ evenement.titleEvenement }}</h2>
+    </div>
+    <div class="event-card-body">
+        <p class="event-date">{{ formatDate(evenement.dateEvenement) }}</p>
+        <p class="event-location">{{ evenement.location }}</p>
+    </div>
+</div>

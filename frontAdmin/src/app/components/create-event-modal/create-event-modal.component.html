@@ -1,0 +1,137 @@
+<div class="modal-overlay" (click)="close()">
+  <div class="modal-container" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>{{ isEditMode ? 'Modifier l\'événement' : 'Créer un événement' }}</h2>
+      <button type="button" class="close-btn" (click)="close()">
+        <span>&times;</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <form [formGroup]="eventForm" (ngSubmit)="onSubmit()">
+
+        <!-- Titre de l'événement -->
+        <div class="form-group">
+          <label for="titleEvenement">Titre de l'événement *</label>
+          <input
+            type="text"
+            id="titleEvenement"
+            formControlName="titleEvenement"
+            class="form-control"
+            placeholder="Ex: Soolking Live: Un Soir Épicé à Paris Bercy"
+            />
+            @if (eventForm.get('titleEvenement')?.invalid && eventForm.get('titleEvenement')?.touched) {
+              <span class="error-message">
+                {{ getErrorMessage('titleEvenement') }}
+              </span>
+            }
+          </div>
+
+          <!-- Description -->
+          <div class="form-group">
+            <label for="descriptionEvenement">Description *</label>
+            <textarea
+              id="descriptionEvenement"
+              formControlName="descriptionEvenement"
+              class="form-control"
+              rows="4"
+              placeholder="Décrivez votre événement en détails..."
+            ></textarea>
+            @if (eventForm.get('descriptionEvenement')?.invalid && eventForm.get('descriptionEvenement')?.touched) {
+              <span class="error-message">
+                {{ getErrorMessage('descriptionEvenement') }}
+              </span>
+            }
+          </div>
+
+          <!-- Date et heure -->
+          <div class="form-group">
+            <label for="dateEvenement">Date et heure *</label>
+            <input
+              type="datetime-local"
+              id="dateEvenement"
+              formControlName="dateEvenement"
+              class="form-control"
+              />
+              @if (eventForm.get('dateEvenement')?.invalid && eventForm.get('dateEvenement')?.touched) {
+                <span class="error-message">
+                  {{ getErrorMessage('dateEvenement') }}
+                </span>
+              }
+            </div>
+
+            <!-- Lieu -->
+            <div class="form-group">
+              <label for="location">Lieu *</label>
+              <input
+                type="text"
+                id="location"
+                formControlName="location"
+                class="form-control"
+                placeholder="Ex: Paris Bercy"
+                />
+                @if (eventForm.get('location')?.invalid && eventForm.get('location')?.touched) {
+                  <span class="error-message">
+                    {{ getErrorMessage('location') }}
+                  </span>
+                }
+              </div>
+
+              <!-- Statut -->
+              <div class="form-group">
+                <label for="statusEvenement">Statut *</label>
+                <select
+                  id="statusEvenement"
+                  formControlName="statusEvenement"
+                  class="form-control"
+                  >
+                  @for (status of eventStatusOptions; track status) {
+                    <option [value]="status.value">
+                      {{ status.label }}
+                    </option>
+                  }
+                </select>
+              </div>
+
+              <!-- Agenda -->
+              <div class="form-group">
+                <label for="agenda">Agenda *</label>
+                <textarea
+                  id="agenda"
+                  formControlName="agenda"
+                  class="form-control"
+                  rows="6"
+                  placeholder="1. Arrivée des invités à partir de 18h30&#10;2. Ouverture du concert à 20h00&#10;3. Performance live..."
+                ></textarea>
+                @if (eventForm.get('agenda')?.invalid && eventForm.get('agenda')?.touched) {
+                  <span class="error-message">
+                    {{ getErrorMessage('agenda') }}
+                  </span>
+                }
+              </div>
+
+              <!-- Message d'erreur -->
+              @if (errorMessage) {
+                <div class="alert alert-danger">
+                  {{ errorMessage }}
+                </div>
+              }
+
+                <!-- Boutons d'action -->
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" (click)="close()" [disabled]="isSubmitting">
+                    Annuler
+                  </button>
+                  <button type="submit" class="btn btn-primary" [disabled]="isSubmitting || eventForm.invalid">
+                    @if (isSubmitting) {
+                      <span>{{ isEditMode ? 'Mise à jour en cours...' : 'Création en cours...' }}</span>
+                    }
+                    @if (!isSubmitting) {
+                      <span>{{ isEditMode ? 'Mettre à jour' : 'Créer l\'événement' }}</span>
+                    }
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>

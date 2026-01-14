@@ -1,0 +1,39 @@
+/* You can add global styles to this file, and also import other style files */
+
+// Import Bootstrap
+@use 'bootstrap/scss/bootstrap';
+
+// Import Font Awesome
+@use '@fortawesome/fontawesome-free/scss/fontawesome';
+@use '@fortawesome/fontawesome-free/scss/solid';
+@use '@fortawesome/fontawesome-free/scss/regular';
+@use '@fortawesome/fontawesome-free/scss/brands';
+
+// Custom global styles for SmartEvent AI
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8f9fa;
+}
+
+// Custom primary color for SmartEvent AI
+.text-primary {
+  color: #321fdb !important;
+}
+
+.bg-primary {
+  background-color: #321fdb !important;
+}
+
+.btn-primary {
+  background-color: #321fdb;
+  border-color: #321fdb;
+  
+  &:hover {
+    background-color: #2819b0;
+    border-color: #2819b0;
+  }
+}

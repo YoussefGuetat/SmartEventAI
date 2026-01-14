@@ -1,0 +1,78 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <button 
+        type="button"
+        class="tab" 
+        [class.active]="isLoginMode()" 
+        (click)="switchToLogin()">
+        Connexion
+      </button>
+      <button 
+        type="button"
+        class="tab" 
+        [class.active]="!isLoginMode()" 
+        (click)="switchToRegister()">
+        Inscription
+      </button>
+    </div>
+
+    <!-- Formulaire de Connexion -->
+    @if (isLoginMode()) {
+      <form [formGroup]="loginForm" (ngSubmit)="onLogin()" class="auth-form">
+        <h2>Connexion</h2>
+
+        @if (loginErrors()){
+          <div class="alert alert-error">
+            <p>{{loginErrors()}}</p>
+          </div>
+        }
+        @if (loginSuccess()){
+          <div class="alert alert-success">
+            <p>{{loginSuccess()}}</p>
+          </div>
+        }
+        
+        <div class="form-group">
+          <input type="email" formControlName="email" placeholder="Email" required>
+        </div>
+        <div class="form-group">
+          <input type="password" formControlName="motDePasse" placeholder="Mot de passe" required>
+        </div>
+        <button type="submit" class="btn-submit">Se connecter</button>
+        <div class="form-footer">
+          <a href="#" class="forgot-password">Mot de passe oublié ?</a>
+        </div>
+      </form>
+    } @else {
+      <form [formGroup]="registerForm" (ngSubmit)="onRegister()" class="auth-form">
+        <h2>Inscription</h2>
+
+        @if (registerErrors()){
+          <div class="alert alert-error">
+            <p>{{registerErrors()}}</p>
+          </div>
+        }
+        @if (registerSuccess()){
+          <div class="alert alert-success">
+            <p>{{registerSuccess()}}</p>
+          </div>
+        }
+        <div class="form-group">
+          <input type="text" formControlName="nomUtilisateur" placeholder="Nom complet" required>
+        </div>
+        <div class="form-group">
+          <input type="email" formControlName="email" placeholder="Email" required>
+        </div>
+        <div class="form-group">
+          <input type="password" formControlName="motDePasse" placeholder="Mot de passe" required>
+        </div>
+        <div class="form-group">
+          <input type="password" formControlName="confirmPassword" placeholder="Confirmer le mot de passe" required>
+        </div>
+        <button type="submit" class="btn-submit">S'inscrire</button>
+      </form>
+    }
+  </div>
+</div>
+

@@ -1,0 +1,60 @@
+<div class="evenements-container">
+    <h1>Evenements à venir</h1>
+
+    @if (loading()){
+        <div class="loading">
+            <p>Chargement en cours...</p>
+        </div>
+    }
+
+    @if (error()){
+        <div class="error">
+            <p>{{error()}}</p>
+            <button (click)="loadEvents()">Réessayer</button>
+        </div>
+    }
+
+    @if (!loading() && !error() && evenements().length > 0){
+        <div class="events-grid">
+            @for (event of evenements(); track event.idEvenement){
+                <app-event-card
+                    [evenement]="event"
+                    (cardClicked)="selectEvent($event)"
+                ></app-event-card>
+            }
+        </div>
+    }
+
+    @if (!loading() && !error() && evenements().length === 0){
+        <div class="no-events">
+            <p>Aucun événement disponible pour le moment.</p>
+        </div>
+    }
+
+    @if (selectedEvent()){
+        <div class = "modal-overlay" (click) = "closeEvent()">
+            <div class = "modal-content" (click) = "$event.stopPropagation()">
+                <button (click)="closeEvent()">Fermer</button>
+                <h2>{{selectedEvent()!.titleEvenement}}</h2>
+                <div class = "event-details">
+                    <div class = "detail-item">
+                        <strong>📅 Date</strong>
+                        <p>{{formatDate(selectedEvent()!.dateEvenement)}}</p>
+                    </div>
+                    <div class = "detail-item">
+                        <strong>📍 Lieu</strong>
+                        <p>{{selectedEvent()!.location}}</p>
+                    </div>
+                    <div class = "detail-item">
+                        <strong>📝 Description</strong>
+                        <p>{{selectedEvent()!.descriptionEvenement}}</p>
+                    </div>
+                    <div class = "detail-item">
+                        <strong>🗓️ Programme</strong>
+                        <pre class="agenda">{{selectedEvent()!.agenda}}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>

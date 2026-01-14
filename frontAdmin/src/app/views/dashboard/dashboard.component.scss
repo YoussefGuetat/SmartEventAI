@@ -1,0 +1,82 @@
+// Styles personnalisés pour le Dashboard SmartEvent AI
+
+.display-4 {
+  font-size: 2.5rem;
+  font-weight: 700;
+}
+
+c-card {
+  border-radius: 0.5rem;
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+  }
+}
+
+.shadow-sm {
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+// Style pour les icônes dans les cartes statistiques
+c-card-body {
+  svg[cIcon] {
+    opacity: 0.8;
+  }
+}
+
+// Espacement des boutons d'actions
+.gap-3 {
+  gap: 1rem !important;
+}
+
+// Responsive pour les petits écrans
+@media (max-width: 768px) {
+  .display-4 {
+    font-size: 2rem;
+  }
+
+  .display-5 {
+    font-size: 2rem;
+  }
+
+  button[cButton] {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+// Style pour la table
+table {
+  th, td {
+    vertical-align: middle;
+  }
+
+  svg[cIcon] {
+    vertical-align: baseline;
+  }
+}
+
+// Animation subtile pour les badges
+c-badge {
+  transition: all 0.2s ease-in-out;
+  
+  &:hover {
+    transform: scale(1.05);
+  }
+}
+
+.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #f8f9fa;
+  }
+}
+
+.spinner-border {
+  width: 3rem;
+  height: 3rem;
+}

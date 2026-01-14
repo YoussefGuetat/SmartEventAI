@@ -1,0 +1,196 @@
+<div class="container-fluid mt-4">
+  <!-- Header Section -->
+  <div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <div>
+        <h1 class="display-4 fw-bold text-primary">SmartEvent AI</h1>
+        <p class="lead text-muted">
+          Plateforme intelligente de gestion d'événements assistée par IA
+        </p>
+      </div>
+      <button class="btn btn-outline-danger" (click)="logout()">
+        <i class="fas fa-sign-out-alt me-2"></i>
+        Déconnexion
+      </button>
+    </div>
+  </div>
+
+  <!-- Section Actions rapides -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <h3 class="mb-3">
+        <i class="fas fa-bolt me-2"></i>
+        Actions rapides
+      </h3>
+    </div>
+
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap gap-3">
+            <button
+              (click)="openCreateEventModal()"
+              class="btn btn-primary d-flex align-items-center">
+              <i class="fas fa-plus me-2"></i>
+              Créer un événement
+            </button>
+            <button
+              (click)="openAiGenerateModal()"
+              class="btn btn-success d-flex align-items-center">
+              <i class="fas fa-magic me-2"></i>
+              Générer avec l'IA
+            </button>
+            <button
+              (click)="openAiMarketingModal()"
+              class="btn btn-info d-flex align-items-center">
+              <i class="fas fa-bullhorn me-2"></i>
+              Générer du marketing
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section Événements créés -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <h3 class="mb-3">
+        <i class="fas fa-calendar-check me-2"></i>
+        Événements créés
+      </h3>
+    </div>
+
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header bg-white">
+          <strong>Mes événements</strong>
+        </div>
+        <div class="card-body p-0">
+          @if (isLoading) {
+            <div class="text-center p-4">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Chargement...</span>
+              </div>
+            </div>
+          }
+          @if (!isLoading && events.length === 0) {
+            <div class="text-center p-4 text-muted">
+              <i class="fas fa-inbox fa-3x mb-3"></i>
+              <p>Aucun événement validé trouvé</p>
+            </div>
+          }
+          @if (!isLoading && events.length > 0) {
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th scope="col">Titre</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Lieu</th>
+                    <th scope="col">Statut</th>
+                    <th scope="col" class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (evt of events; track evt.idEvenement) {
+                    <tr class="clickable-row" (click)="viewEventDetails(evt)">
+                      <td>
+                        <strong>{{ evt.titleEvenement }}</strong>
+                      </td>
+                      <td>
+                        <i class="fas fa-calendar me-1"></i>
+                        {{ evt.dateEvenement | date:'dd/MM/yyyy HH:mm' }}
+                      </td>
+                      <td>
+                        <i class="fas fa-map-marker-alt me-1"></i>
+                        {{ evt.location }}
+                      </td>
+                      <td>
+                        <span [class]="'badge bg-' + getStatusBadgeClass(evt.statusEvenement)">
+                          {{ getStatusLabel(evt.statusEvenement) }}
+                        </span>
+                      </td>
+                      <td class="text-end">
+                        @if (evt.statusEvenement === 'DRAFT') {
+                          <button 
+                            class="btn btn-sm btn-warning me-2"
+                            (click)="startWorkflow(evt, $event)"
+                            title="Workflow d'automatisation">
+                            <i class="fas fa-robot text-white"></i>
+                          </button>
+                        }
+                        <button 
+                          class="btn btn-sm btn-primary me-2"
+                          (click)="openEditEventModal(evt, $event)"
+                          title="Modifier l'événement">
+                          <i class="fas fa-pen"></i>
+                        </button>
+                        <button 
+                          class="btn btn-sm btn-danger"
+                          (click)="deleteEvent(evt, $event)"
+                          title="Supprimer l'événement">
+                          <i class="fas fa-trash"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de création d'événement -->
+@if (showCreateEventModal) {
+  <app-create-event-modal
+    [aiGeneratedData]="aiGeneratedData"
+    (closeModal)="closeCreateEventModal()"
+    (eventCreated)="onEventCreated()">
+  </app-create-event-modal>
+}
+
+<!-- Modal de génération IA -->
+@if (showAiGenerateModal) {
+  <app-ai-generate-modal
+    (closeModal)="closeAiGenerateModal()"
+    (contentGenerated)="onAiContentGenerated($event)">
+  </app-ai-generate-modal>
+}
+
+<!-- Modal de génération marketing -->
+@if (showAiMarketingModal) {
+  <app-ai-marketing-modal
+    (closeModal)="closeAiMarketingModal()"
+    (marketingGenerated)="onMarketingGenerated($event)">
+  </app-ai-marketing-modal>
+}
+
+<!-- Modal de résultat marketing -->
+@if (showMarketingResultModal) {
+  <app-marketing-result-modal
+    [marketingContent]="marketingContent"
+    (closeModal)="closeMarketingResultModal()">
+  </app-marketing-result-modal>
+}
+
+<!-- Modal de détails d'événement -->
+@if (showEventDetailsModal && selectedEvent) {
+  <app-event-details-modal
+    [event]="selectedEvent"
+    (closeModal)="closeEventDetailsModal()">
+  </app-event-details-modal>
+}
+
+<!-- Modal de modification d'événement -->
+@if (showEditEventModal && selectedEvent) {
+  <app-create-event-modal
+    [event]="selectedEvent"
+    (closeModal)="closeEditEventModal()"
+    (eventCreated)="onEventUpdated()">
+  </app-create-event-modal>
+}
