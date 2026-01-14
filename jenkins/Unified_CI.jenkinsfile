@@ -11,7 +11,7 @@ pipeline {
         GITHUB_REPO_URL = 'https://github.com/YoussefGuetat/SmartEventAI.git'
         GIT_BRANCH = 'main'
         GITHUB_CREDENTIALS = 'github_credentials'
-        DOCKER_HUB_CREDENTIALS = 'dockerhubcr'
+        DOCKER_HUB_CREDENTIALS = 'guetatyoussef'
         DOCKERHUB_NAMESPACE = 'smarteventai'
 
         // Downstream
@@ -44,88 +44,6 @@ pipeline {
                     git url: env.GITHUB_REPO_URL,
                         branch: env.GIT_BRANCH,
                         credentialsId: env.GITHUB_CREDENTIALS
-                }
-            }
-        }
-       stage('Build Spring Services') {
-            steps {
-                script {
-                    def services = env.SPRING_SERVICES.split(',')
-
-                    for (service in services) {
-                        stage("Build ${service}") {
-                            dir(service) {
-                                echo "📦 Building ${service}..."
-                                sh 'mvn clean package -DskipTests'
-
-                                def artifactId = sh(
-                                    script: "mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout",
-                                    returnStdout: true
-                                ).trim()
-
-                                def version = sh(
-                                    script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout",
-                                    returnStdout: true
-                                ).trim()
-
-                                def jarFile = "target/${artifactId}-${version}.jar"
-
-                                if (!fileExists(jarFile)) {
-                                    error "JAR not found: ${jarFile}"
-                                }
-
-                                archiveArtifacts artifacts: jarFile, fingerprint: true
-
-                                BUILD_REGISTRY[service] = [
-                                    type: 'spring',
-                                    artifactId: artifactId,
-                                    version: version,
-                                    jarFile: jarFile
-                                ]
-
-                                echo "✅ ${service} built successfully"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Test Spring Services') {
-            steps {
-                script {
-                    def services = env.SPRING_SERVICES.split(',')
-
-                    for (service in services) {
-                        stage("Test ${service}") {
-                            dir(service) {
-                                echo "🧪 Testing ${service}..."
-                                sh 'mvn test || true'
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('SonarQube - Spring Services') {
-            steps {
-                script {
-                    def services = env.SPRING_SERVICES.split(',')
-
-                    for (service in services) {
-                        stage("SonarQube ${service}") {
-                            dir(service) {
-                                echo "🔍 Analyzing ${service}..."
-                                sh """
-                                mvn sonar:sonar \
-                                    -Dsonar.projectKey=${service} \
-                                    -Dsonar.host.url=${SONAR_HOST_URL} \
-                                    -Dsonar.login=${SONAR_LOGIN} || true
-                                """
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -177,85 +95,6 @@ pipeline {
         }
     }
 }
-
-        stage('Build Node.js Services') {
-            steps {
-                script {
-                    def services = env.NODE_SERVICES.split(',')
-
-                    for (service in services) {
-                        stage("Build ${service}") {
-                            dir(service) {
-                                echo "📦 Building ${service}..."
-                                sh 'npm install'
-                                sh 'npm run lint || true'
-                                sh 'npm test || true'
-
-                                sh """
-                                sonar-scanner \
-                                    -Dsonar.projectKey=${service} \
-                                    -Dsonar.sources=. \
-                                    -Dsonar.host.url=${SONAR_HOST_URL} \
-                                    -Dsonar.login=${SONAR_LOGIN} || true
-                                """
-
-                                BUILD_REGISTRY[service] = [
-                                    type: 'nodejs',
-                                    version: '1.0.0'
-                                ]
-
-                                echo "✅ ${service} built successfully"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-       
-
-        stage('Build Angular Frontends') {
-            steps {
-                script {
-                    def services = env.ANGULAR_SERVICES.split(',')
-
-                    for (service in services) {
-                        stage("Build ${service}") {
-                            dir(service) {
-                                echo "🅰️ Building ${service}..."
-                                
-                                sh '''
-                                    echo "Node version: $(node --version)"
-                                    echo "NPM version: $(npm --version)"
-                                    npm install
-                                    npm run lint 2>/dev/null || echo "⚠️ No lint script"
-                                    npm run test:ci 2>/dev/null || echo "⚠️ No test script"
-                                    npm run build -- --configuration production || npm run build --prod
-                                '''
-
-                                sh """
-                                    if command -v sonar-scanner &> /dev/null; then
-                                        sonar-scanner \
-                                            -Dsonar.projectKey=${service} \
-                                            -Dsonar.sources=src \
-                                            -Dsonar.host.url=${SONAR_HOST_URL} \
-                                            -Dsonar.login=${SONAR_LOGIN} || true
-                                    else
-                                        echo "⚠️ sonar-scanner not installed, skipping analysis"
-                                    fi
-                                """
-
-                                BUILD_REGISTRY[service] = [
-                                    type: 'angular',
-                                    version: '1.0.0'
-                                ]
-
-                                echo "✅ ${service} built successfully"
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
        stage('Build Docker Images') {
     steps {
