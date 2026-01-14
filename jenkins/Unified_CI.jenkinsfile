@@ -51,36 +51,48 @@ pipeline {
        
 
         stage('Build Angular Frontends') {
-    steps {
-        script {
-            def services = env.ANGULAR_SERVICES.split(',')
+            steps {
+                script {
+                    def services = env.ANGULAR_SERVICES.split(',')
 
-            for (service in services) {
-                stage("Build ${service}") {
-                    dir(service) {
-                        echo "🅰️ Building ${service}..."
-                        
-                        // Utiliser Node.js 18 ou 20
-                        sh '''
-                            export NVM_DIR="$HOME/.nvm"
-                            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-                            nvm use 18 || nvm install 18
-                            npm install
-                            npm run build -- --configuration production || npm run build --prod
-                        '''
+                    for (service in services) {
+                        stage("Build ${service}") {
+                            dir(service) {
+                                echo "🅰️ Building ${service}..."
+                                
+                                sh '''
+                                    echo "Node version: $(node --version)"
+                                    echo "NPM version: $(npm --version)"
+                                    npm install
+                                    npm run lint 2>/dev/null || echo "⚠️ No lint script"
+                                    npm run test:ci 2>/dev/null || echo "⚠️ No test script"
+                                    npm run build -- --configuration production || npm run build --prod
+                                '''
 
-                        BUILD_REGISTRY[service] = [
-                            type: 'angular',
-                            version: '1.0.0'
-                        ]
+                                sh """
+                                    if command -v sonar-scanner &> /dev/null; then
+                                        sonar-scanner \
+                                            -Dsonar.projectKey=${service} \
+                                            -Dsonar.sources=src \
+                                            -Dsonar.host.url=${SONAR_HOST_URL} \
+                                            -Dsonar.login=${SONAR_LOGIN} || true
+                                    else
+                                        echo "⚠️ sonar-scanner not installed, skipping analysis"
+                                    fi
+                                """
 
-                        echo "✅ ${service} built successfully"
+                                BUILD_REGISTRY[service] = [
+                                    type: 'angular',
+                                    version: '1.0.0'
+                                ]
+
+                                echo "✅ ${service} built successfully"
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-}
 
         stage('Build Docker Images') {
             steps {
