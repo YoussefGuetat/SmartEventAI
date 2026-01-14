@@ -12,24 +12,20 @@ pipeline {
         GIT_BRANCH = 'main'
         GITHUB_CREDENTIALS = 'github_credentials'
         DOCKER_HUB_CREDENTIALS = 'docker_hub_credentials'
-        DOCKERHUB_NAMESPACE = 'votre-dockerhub'
+        DOCKERHUB_NAMESPACE = 'SmartEventAI'
 
         // Downstream
         DOWNSTREAM_PIPELINE = 'SmartEvent_CD'
 
         // SonarQube
         SONAR_HOST_URL = 'http://localhost:9000'
-        SONAR_LOGIN = credentials('sonar')
-
-        // Nexus
-        NEXUS_URL = 'http://localhost:8081/repository/maven-releases/'
-        NEXUS_CREDENTIALS_ID = 'nexus_credentials'
+        SONAR_LOGIN = credentials('sonar11')
 
         // Services
-        SPRING_SERVICES = 'auth-service,event-service,gateway-service,eureka-server,config-server'
+        SPRING_SERVICES = 'config-server,eureka-server,gateway-service,auth-service,event-service'
         NODE_SERVICES = 'workflow-service'
         PYTHON_SERVICES = 'ai-service'
-        ANGULAR_SERVICES = 'frontAdmin,frontUser'
+        ANGULAR_SERVICES = 'frontAdmin,front'
     }
 
     stages {
@@ -128,35 +124,6 @@ pipeline {
                                     -Dsonar.host.url=${SONAR_HOST_URL} \
                                     -Dsonar.login=${SONAR_LOGIN} || true
                                 """
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Publish Spring Services to Nexus') {
-            steps {
-                script {
-                    def services = env.SPRING_SERVICES.split(',')
-
-                    withCredentials([usernamePassword(
-                        credentialsId: "${env.NEXUS_CREDENTIALS_ID}",
-                        usernameVariable: 'NEXUS_USER',
-                        passwordVariable: 'NEXUS_PASS'
-                    )]) {
-                        for (service in services) {
-                            stage("Publish ${service}") {
-                                dir(service) {
-                                    def metadata = BUILD_REGISTRY[service]
-                                    echo "📤 Publishing ${service} to Nexus..."
-
-                                    sh """
-                                    curl -v -u ${NEXUS_USER}:${NEXUS_PASS} \
-                                        --upload-file ${metadata.jarFile} \
-                                        "${env.NEXUS_URL}${service}/${metadata.version}/${metadata.artifactId}-${metadata.version}.jar"
-                                    """
-                                }
                             }
                         }
                     }
