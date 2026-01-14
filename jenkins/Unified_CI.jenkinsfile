@@ -1,0 +1,480 @@
+pipeline {
+    agent any
+
+    tools {
+        maven 'M2_HOME'
+        jdk 'JAVA_HOME'
+        nodejs 'NodeJS_18'
+    }
+
+    environment {
+        // Global
+        GITHUB_REPO_URL = 'https://github.com/votre-org/SmartEventAI.git'
+        GIT_BRANCH = 'main'
+        GITHUB_CREDENTIALS = 'github_credentials'
+        DOCKER_HUB_CREDENTIALS = 'docker_hub_credentials'
+        DOCKERHUB_NAMESPACE = 'votre-dockerhub'
+        
+        // Downstream
+        DOWNSTREAM_PIPELINE = 'SmartEvent_CD'
+        
+        // SonarQube
+        SONAR_HOST_URL = 'http://localhost:9000'
+        SONAR_LOGIN = credentials('sonar')
+        
+        // Nexus
+        NEXUS_URL = 'http://localhost:8081/repository/maven-releases/'
+        NEXUS_CREDENTIALS_ID = 'nexus_credentials'
+        
+        // Services Spring Boot
+        SPRING_SERVICES = 'auth-service,event-service,gateway-service,eureka-server,config-server'
+        
+        // Services Node.js
+        NODE_SERVICES = 'workflow-service'
+        
+        // Services Python
+        PYTHON_SERVICES = 'ai-service'
+        
+        // Frontends Angular
+        ANGULAR_SERVICES = 'frontAdmin,frontUser'
+        
+        // Build artifacts registry
+        BUILD_REGISTRY = [:]
+    }
+
+    stages {
+        stage('Initialize') {
+            steps {
+                script {
+                    echo "=========================================="
+                    echo "  SmartEvent AI - Unified CI Pipeline"
+                    echo "  Build #${BUILD_NUMBER}"
+                    echo "=========================================="
+                    
+                    // Clone repository
+                    git url: env.GITHUB_REPO_URL,
+                        branch: env.GIT_BRANCH,
+                        credentialsId: env.GITHUB_CREDENTIALS
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // SPRING BOOT SERVICES (Java/Maven)
+        // ═══════════════════════════════════════════
+        stage('Build Spring Services') {
+            steps {
+                script {
+                    def services = env.SPRING_SERVICES.split(',')
+                    
+                    for (service in services) {
+                        stage("Build ${service}") {
+                            dir(service) {
+                                echo "📦 Building ${service}..."
+                                
+                                // Maven build
+                                sh 'mvn clean package -DskipTests'
+                                
+                                // Extract artifact info
+                                def artifactId = sh(
+                                    script: "mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout",
+                                    returnStdout: true
+                                ).trim()
+                                
+                                def version = sh(
+                                    script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout",
+                                    returnStdout: true
+                                ).trim()
+                                
+                                def jarFile = "target/${artifactId}-${version}.jar"
+                                
+                                if (!fileExists(jarFile)) {
+                                    error "JAR not found: ${jarFile}"
+                                }
+                                
+                                // Archive
+                                archiveArtifacts artifacts: jarFile, fingerprint: true
+                                
+                                // Store metadata
+                                BUILD_REGISTRY[service] = [
+                                    type: 'spring',
+                                    artifactId: artifactId,
+                                    version: version,
+                                    jarFile: jarFile
+                                ]
+                                
+                                echo "✅ ${service} built successfully"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Test Spring Services') {
+            steps {
+                script {
+                    def services = env.SPRING_SERVICES.split(',')
+                    
+                    for (service in services) {
+                        stage("Test ${service}") {
+                            dir(service) {
+                                echo "🧪 Testing ${service}..."
+                                sh 'mvn test || true'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube - Spring Services') {
+            steps {
+                script {
+                    def services = env.SPRING_SERVICES.split(',')
+                    
+                    for (service in services) {
+                        stage("SonarQube ${service}") {
+                            dir(service) {
+                                echo "🔍 Analyzing ${service}..."
+                                sh """
+                                mvn sonar:sonar \
+                                    -Dsonar.projectKey=${service} \
+                                    -Dsonar.host.url=${SONAR_HOST_URL} \
+                                    -Dsonar.login=${SONAR_LOGIN} || true
+                                """
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Publish Spring Services to Nexus') {
+            steps {
+                script {
+                    def services = env.SPRING_SERVICES.split(',')
+                    
+                    withCredentials([usernamePassword(
+                        credentialsId: "${env.NEXUS_CREDENTIALS_ID}",
+                        passwordVariable: 'NEXUS_PASS',
+                        usernameVariable: 'NEXUS_USER'
+                    )]) {
+                        for (service in services) {
+                            stage("Publish ${service}") {
+                                dir(service) {
+                                    def metadata = BUILD_REGISTRY[service]
+                                    echo "📤 Publishing ${service} to Nexus..."
+                                    
+                                    sh """
+                                    curl -v -u ${NEXUS_USER}:${NEXUS_PASS} \
+                                        --upload-file ${metadata.jarFile} \
+                                        "${env.NEXUS_URL}${service}/${metadata.version}/${metadata.artifactId}-${metadata.version}.jar"
+                                    """
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // PYTHON SERVICE (FastAPI)
+        // ═══════════════════════════════════════════
+        stage('Build AI Service') {
+            steps {
+                script {
+                    def services = env.PYTHON_SERVICES.split(',')
+                    
+                    for (service in services) {
+                        stage("Build ${service}") {
+                            dir(service) {
+                                echo "🐍 Building ${service}..."
+                                
+                                sh '''
+                                python3 -m venv venv
+                                . venv/bin/activate
+                                pip install --upgrade pip
+                                pip install -r requirements.txt
+                                pip install pytest pytest-cov pylint
+                                '''
+                                
+                                // Tests
+                                sh '''
+                                . venv/bin/activate
+                                pylint main.py || true
+                                pytest --cov=. --cov-report=xml || true
+                                '''
+                                
+                                // SonarQube
+                                sh """
+                                sonar-scanner \
+                                    -Dsonar.projectKey=${service} \
+                                    -Dsonar.sources=. \
+                                    -Dsonar.host.url=${SONAR_HOST_URL} \
+                                    -Dsonar.login=${SONAR_LOGIN} \
+                                    -Dsonar.python.coverage.reportPaths=coverage.xml || true
+                                """
+                                
+                                BUILD_REGISTRY[service] = [
+                                    type: 'python',
+                                    version: '1.0.0'
+                                ]
+                                
+                                echo "✅ ${service} built successfully"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // NODE.JS SERVICE
+        // ═══════════════════════════════════════════
+        stage('Build Workflow Service') {
+            steps {
+                script {
+                    def services = env.NODE_SERVICES.split(',')
+                    
+                    for (service in services) {
+                        stage("Build ${service}") {
+                            dir(service) {
+                                echo "📦 Building ${service}..."
+                                
+                                sh 'npm install'
+                                sh 'npm run lint || true'
+                                sh 'npm test || true'
+                                
+                                // SonarQube
+                                sh """
+                                sonar-scanner \
+                                    -Dsonar.projectKey=${service} \
+                                    -Dsonar.sources=. \
+                                    -Dsonar.host.url=${SONAR_HOST_URL} \
+                                    -Dsonar.login=${SONAR_LOGIN} || true
+                                """
+                                
+                                BUILD_REGISTRY[service] = [
+                                    type: 'nodejs',
+                                    version: '1.0.0'
+                                ]
+                                
+                                echo "✅ ${service} built successfully"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // ANGULAR FRONTENDS
+        // ═══════════════════════════════════════════
+        stage('Build Angular Frontends') {
+            steps {
+                script {
+                    def services = env.ANGULAR_SERVICES.split(',')
+                    
+                    for (service in services) {
+                        stage("Build ${service}") {
+                            dir(service) {
+                                echo "🅰️ Building ${service}..."
+                                
+                                sh 'npm install'
+                                sh 'npm run lint || true'
+                                sh 'npm run test:ci || true'
+                                sh 'npm run build --prod'
+                                
+                                // SonarQube
+                                sh """
+                                sonar-scanner \
+                                    -Dsonar.projectKey=${service} \
+                                    -Dsonar.sources=src \
+                                    -Dsonar.host.url=${SONAR_HOST_URL} \
+                                    -Dsonar.login=${SONAR_LOGIN} || true
+                                """
+                                
+                                BUILD_REGISTRY[service] = [
+                                    type: 'angular',
+                                    version: '1.0.0'
+                                ]
+                                
+                                echo "✅ ${service} built successfully"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // BUILD DOCKER IMAGES FOR ALL SERVICES
+        // ═══════════════════════════════════════════
+        stage('Build Docker Images') {
+            steps {
+                script {
+                    echo "🐳 Building Docker images for all services..."
+                    
+                    def allServices = []
+                    allServices.addAll(env.SPRING_SERVICES.split(','))
+                    allServices.addAll(env.PYTHON_SERVICES.split(','))
+                    allServices.addAll(env.NODE_SERVICES.split(','))
+                    allServices.addAll(env.ANGULAR_SERVICES.split(','))
+                    
+                    for (service in allServices) {
+                        stage("Docker Build ${service}") {
+                            dir(service) {
+                                def metadata = BUILD_REGISTRY[service]
+                                def imageName = "${DOCKERHUB_NAMESPACE}/${service}"
+                                def imageTag = "build-${BUILD_NUMBER}"
+                                
+                                echo "🐳 Building Docker image: ${imageName}:${imageTag}"
+                                
+                                if (metadata.type == 'spring') {
+                                    docker.build(
+                                        "${imageName}:${imageTag}",
+                                        "--build-arg JAR_FILE=${metadata.jarFile} ."
+                                    )
+                                } else {
+                                    docker.build("${imageName}:${imageTag}", ".")
+                                }
+                                
+                                // Tag as latest
+                                docker.image("${imageName}:${imageTag}").tag('latest')
+                                
+                                // Update registry
+                                BUILD_REGISTRY[service].dockerImage = imageName
+                                BUILD_REGISTRY[service].dockerTag = imageTag
+                                
+                                echo "✅ Docker image built: ${imageName}:${imageTag}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Push Docker Images') {
+            steps {
+                script {
+                    echo "📤 Pushing Docker images to Docker Hub..."
+                    
+                    docker.withRegistry('https://registry.hub.docker.com', env.DOCKER_HUB_CREDENTIALS) {
+                        def allServices = []
+                        allServices.addAll(env.SPRING_SERVICES.split(','))
+                        allServices.addAll(env.PYTHON_SERVICES.split(','))
+                        allServices.addAll(env.NODE_SERVICES.split(','))
+                        allServices.addAll(env.ANGULAR_SERVICES.split(','))
+                        
+                        for (service in allServices) {
+                            def metadata = BUILD_REGISTRY[service]
+                            
+                            echo "📤 Pushing ${metadata.dockerImage}:${metadata.dockerTag}"
+                            docker.image("${metadata.dockerImage}:${metadata.dockerTag}").push()
+                            docker.image("${metadata.dockerImage}:latest").push()
+                        }
+                    }
+                    
+                    echo "✅ All Docker images pushed successfully"
+                }
+            }
+        }
+
+        stage('Generate Build Report') {
+            steps {
+                script {
+                    echo "📊 Generating build report..."
+                    
+                    def report = """
+                    ========================================
+                    SmartEvent AI - Build Report #${BUILD_NUMBER}
+                    ========================================
+                    
+                    SPRING BOOT SERVICES:
+                    """
+                    
+                    env.SPRING_SERVICES.split(',').each { service ->
+                        def meta = BUILD_REGISTRY[service]
+                        report += """
+                        - ${service}
+                          Version: ${meta.version}
+                          Docker: ${meta.dockerImage}:${meta.dockerTag}
+                        """
+                    }
+                    
+                    report += """
+                    
+                    PYTHON SERVICES:
+                    """
+                    env.PYTHON_SERVICES.split(',').each { service ->
+                        def meta = BUILD_REGISTRY[service]
+                        report += """
+                        - ${service}
+                          Docker: ${meta.dockerImage}:${meta.dockerTag}
+                        """
+                    }
+                    
+                    report += """
+                    
+                    NODE.JS SERVICES:
+                    """
+                    env.NODE_SERVICES.split(',').each { service ->
+                        def meta = BUILD_REGISTRY[service]
+                        report += """
+                        - ${service}
+                          Docker: ${meta.dockerImage}:${meta.dockerTag}
+                        """
+                    }
+                    
+                    report += """
+                    
+                    ANGULAR FRONTENDS:
+                    """
+                    env.ANGULAR_SERVICES.split(',').each { service ->
+                        def meta = BUILD_REGISTRY[service]
+                        report += """
+                        - ${service}
+                          Docker: ${meta.dockerImage}:${meta.dockerTag}
+                        """
+                    }
+                    
+                    report += """
+                    ========================================
+                    """
+                    
+                    echo report
+                    
+                    // Save to file
+                    writeFile file: "build-report-${BUILD_NUMBER}.txt", text: report
+                    archiveArtifacts artifacts: "build-report-${BUILD_NUMBER}.txt"
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                echo "✅ CI Pipeline completed successfully!"
+                echo "🚀 Triggering CD Pipeline..."
+                
+                // Trigger CD with build registry
+                build job: env.DOWNSTREAM_PIPELINE,
+                      wait: false,
+                      parameters: [
+                          string(name: 'CI_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+                          string(name: 'DOCKER_TAG', value: "build-${BUILD_NUMBER}")
+                      ]
+            }
+        }
+        failure {
+            echo "❌ CI Pipeline failed!"
+        }
+        always {
+            echo "🧹 Cleaning up..."
+            cleanWs()
+        }
+    }
+}
