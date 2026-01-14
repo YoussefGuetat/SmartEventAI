@@ -59,55 +59,52 @@ pipeline {
             allServices.addAll(env.NODE_SERVICES.split(','))
             allServices.addAll(env.ANGULAR_SERVICES.split(','))
 
-            for (service in allServices) {
+            // Filtrer uniquement les services qui ont été construits avec succès
+            def successfulServices = allServices.findAll { service ->
+                BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null
+            }
+
+            if (successfulServices.isEmpty()) {
+                echo "⚠️ No services to build Docker images for"
+                return
+            }
+
+            echo "📦 Building Docker images for: ${successfulServices.join(', ')}"
+
+            for (service in successfulServices) {
                 stage("Docker Build ${service}") {
                     dir(service) {
-                        // Vérifier que le service existe dans BUILD_REGISTRY
-                        if (!BUILD_REGISTRY.containsKey(service)) {
-                            echo "⚠️ ${service} not found in BUILD_REGISTRY, skipping Docker build"
-                            continue
-                        }
-
                         def metadata = BUILD_REGISTRY[service]
-                        
-                        // Vérifier que metadata n'est pas null
-                        if (metadata == null) {
-                            echo "⚠️ ${service} metadata is null, skipping Docker build"
-                            continue
-                        }
-
                         def imageName = "${DOCKERHUB_NAMESPACE}/${service}"
                         def imageTag = "build-${BUILD_NUMBER}"
 
                         echo "🐳 Building Docker image: ${imageName}:${imageTag}"
 
-                        // Vérifier que le Dockerfile existe
-                        if (!fileExists('Dockerfile')) {
-                            echo "⚠️ Dockerfile not found for ${service}, skipping Docker build"
-                            continue
-                        }
-
-                        try {
-                            if (metadata.type == 'spring') {
-                                // Vérifier que le JAR existe
-                                if (!fileExists(metadata.jarFile)) {
-                                    echo "⚠️ JAR file ${metadata.jarFile} not found for ${service}"
-                                    continue
+                        if (fileExists('Dockerfile')) {
+                            try {
+                                if (metadata.type == 'spring' && metadata.jarFile) {
+                                    if (fileExists(metadata.jarFile)) {
+                                        docker.build("${imageName}:${imageTag}", "--build-arg JAR_FILE=${metadata.jarFile} .")
+                                    } else {
+                                        echo "⚠️ JAR file not found: ${metadata.jarFile}"
+                                        error("JAR file not found")
+                                    }
+                                } else {
+                                    docker.build("${imageName}:${imageTag}", ".")
                                 }
-                                docker.build("${imageName}:${imageTag}", "--build-arg JAR_FILE=${metadata.jarFile} .")
-                            } else {
-                                docker.build("${imageName}:${imageTag}", ".")
+
+                                docker.image("${imageName}:${imageTag}").tag('latest')
+
+                                BUILD_REGISTRY[service].dockerImage = imageName
+                                BUILD_REGISTRY[service].dockerTag = imageTag
+
+                                echo "✅ Docker image built: ${imageName}:${imageTag}"
+                            } catch (Exception e) {
+                                echo "❌ Failed to build Docker image for ${service}: ${e.message}"
+                                // Ne pas faire échouer le pipeline, continuer avec les autres services
                             }
-
-                            docker.image("${imageName}:${imageTag}").tag('latest')
-
-                            BUILD_REGISTRY[service].dockerImage = imageName
-                            BUILD_REGISTRY[service].dockerTag = imageTag
-
-                            echo "✅ Docker image built: ${imageName}:${imageTag}"
-                        } catch (Exception e) {
-                            echo "❌ Failed to build Docker image for ${service}: ${e.message}"
-                            // Continue avec les autres services
+                        } else {
+                            echo "⚠️ Dockerfile not found for ${service}"
                         }
                     }
                 }
@@ -116,27 +113,32 @@ pipeline {
     }
 }
 
-       stage('Push Docker Images') {
+      stage('Push Docker Images') {
     steps {
         script {
             echo "📤 Pushing Docker images to Docker Hub..."
 
+            def allServices = []
+            allServices.addAll(env.SPRING_SERVICES.split(','))
+            allServices.addAll(env.PYTHON_SERVICES.split(','))
+            allServices.addAll(env.NODE_SERVICES.split(','))
+            allServices.addAll(env.ANGULAR_SERVICES.split(','))
+
+            // Filtrer uniquement les services qui ont une image Docker
+            def servicesToPush = allServices.findAll { service ->
+                BUILD_REGISTRY.containsKey(service) && 
+                BUILD_REGISTRY[service] != null &&
+                BUILD_REGISTRY[service].dockerImage != null
+            }
+
+            if (servicesToPush.isEmpty()) {
+                echo "⚠️ No Docker images to push"
+                return
+            }
+
+            echo "📦 Pushing images for: ${servicesToPush.join(', ')}"
+
             docker.withRegistry('https://registry.hub.docker.com', env.DOCKER_HUB_CREDENTIALS) {
-                def allServices = []
-                allServices.addAll(env.SPRING_SERVICES.split(','))
-                allServices.addAll(env.PYTHON_SERVICES.split(','))
-                allServices.addAll(env.NODE_SERVICES.split(','))
-                allServices.addAll(env.ANGULAR_SERVICES.split(','))
-
-                // Filtrer uniquement les services qui ont une image Docker
-                def servicesToPush = allServices.findAll { service ->
-                    BUILD_REGISTRY.containsKey(service) && 
-                    BUILD_REGISTRY[service] != null &&
-                    BUILD_REGISTRY[service].dockerImage != null
-                }
-
-                echo "📦 Services to push: ${servicesToPush.join(', ')}"
-
                 for (service in servicesToPush) {
                     try {
                         def metadata = BUILD_REGISTRY[service]
@@ -150,7 +152,7 @@ pipeline {
                 }
             }
 
-            echo "✅ Docker push completed"
+            echo "✅ Docker push stage completed"
         }
     }
 }
