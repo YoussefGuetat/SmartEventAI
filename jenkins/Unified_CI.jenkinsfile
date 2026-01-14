@@ -48,133 +48,54 @@ pipeline {
             }
         }
 
-        stage('Build Spring Services') {
-            steps {
-                script {
-                    def services = env.SPRING_SERVICES.split(',')
-
-                    for (service in services) {
-                        stage("Build ${service}") {
-                            dir(service) {
-                                echo "📦 Building ${service}..."
-                                sh 'mvn clean package -DskipTests'
-
-                                def artifactId = sh(
-                                    script: "mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout",
-                                    returnStdout: true
-                                ).trim()
-
-                                def version = sh(
-                                    script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout",
-                                    returnStdout: true
-                                ).trim()
-
-                                def jarFile = "target/${artifactId}-${version}.jar"
-
-                                if (!fileExists(jarFile)) {
-                                    error "JAR not found: ${jarFile}"
-                                }
-
-                                archiveArtifacts artifacts: jarFile, fingerprint: true
-
-                                BUILD_REGISTRY[service] = [
-                                    type: 'spring',
-                                    artifactId: artifactId,
-                                    version: version,
-                                    jarFile: jarFile
-                                ]
-
-                                echo "✅ ${service} built successfully"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Test Spring Services') {
-            steps {
-                script {
-                    def services = env.SPRING_SERVICES.split(',')
-
-                    for (service in services) {
-                        stage("Test ${service}") {
-                            dir(service) {
-                                echo "🧪 Testing ${service}..."
-                                sh 'mvn test || true'
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('SonarQube - Spring Services') {
-            steps {
-                script {
-                    def services = env.SPRING_SERVICES.split(',')
-
-                    for (service in services) {
-                        stage("SonarQube ${service}") {
-                            dir(service) {
-                                echo "🔍 Analyzing ${service}..."
-                                sh """
-                                mvn sonar:sonar \
-                                    -Dsonar.projectKey=${service} \
-                                    -Dsonar.host.url=${SONAR_HOST_URL} \
-                                    -Dsonar.login=${SONAR_LOGIN} || true
-                                """
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         stage('Build Python Services') {
-            steps {
-                script {
-                    def services = env.PYTHON_SERVICES.split(',')
+    steps {
+        script {
+            def services = env.PYTHON_SERVICES.split(',')
 
-                    for (service in services) {
-                        stage("Build ${service}") {
-                            dir(service) {
-                                echo "🐍 Building ${service}..."
-                                sh '''
-                                python3 -m venv venv
-                                . venv/bin/activate
-                                pip install --upgrade pip
-                                pip install -r requirements.txt
-                                pip install pytest pytest-cov pylint
-                                '''
+            for (service in services) {
+                stage("Build ${service}") {
+                    dir(service) {
+                        echo "🐍 Building ${service}..."
+                        
+                        // Créer et activer l'environnement virtuel
+                        sh '''
+                            python3 -m venv venv
+                            . venv/bin/activate
+                            python -m pip install --upgrade pip
+                            pip install -r requirements.txt
+                            pip install pytest pytest-cov pylint
+                        '''
 
-                                sh '''
-                                . venv/bin/activate
-                                pylint main.py || true
-                                pytest --cov=. --cov-report=xml || true
-                                '''
+                        // Exécuter les tests et l'analyse
+                        sh '''
+                            . venv/bin/activate
+                            pylint main.py || true
+                            pytest --cov=. --cov-report=xml || true
+                        '''
 
-                                sh """
-                                sonar-scanner \
-                                    -Dsonar.projectKey=${service} \
-                                    -Dsonar.sources=. \
-                                    -Dsonar.host.url=${SONAR_HOST_URL} \
-                                    -Dsonar.login=${SONAR_LOGIN} \
-                                    -Dsonar.python.coverage.reportPaths=coverage.xml || true
-                                """
+                        // Analyse SonarQube
+                        sh """
+                            sonar-scanner \
+                                -Dsonar.projectKey=${service} \
+                                -Dsonar.sources=. \
+                                -Dsonar.host.url=${SONAR_HOST_URL} \
+                                -Dsonar.login=${SONAR_LOGIN} \
+                                -Dsonar.python.coverage.reportPaths=coverage.xml || true
+                        """
 
-                                BUILD_REGISTRY[service] = [
-                                    type: 'python',
-                                    version: '1.0.0'
-                                ]
+                        BUILD_REGISTRY[service] = [
+                            type: 'python',
+                            version: '1.0.0'
+                        ]
 
-                                echo "✅ ${service} built successfully"
-                            }
-                        }
+                        echo "✅ ${service} built successfully"
                     }
                 }
             }
         }
+    }
+}
 
         stage('Build Node.js Services') {
             steps {
