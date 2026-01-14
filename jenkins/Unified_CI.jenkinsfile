@@ -203,65 +203,87 @@ pipeline {
     }
 }
 
-        stage('Generate Build Report') {
-            steps {
-                script {
-                    echo "📊 Generating build report..."
+      stage('Generate Build Report') {
+    steps {
+        script {
+            echo "📊 Generating build report..."
 
-                    def report = """
-                    ========================================
-                    SmartEvent AI - Build Report #${BUILD_NUMBER}
-                    ========================================
-                    
-                    SPRING BOOT SERVICES:
-                    """
-                    env.SPRING_SERVICES.split(',').each { service ->
-                        def meta = BUILD_REGISTRY[service]
-                        report += """
-                        - ${service}
-                          Version: ${meta.version}
-                          Docker: ${meta.dockerImage}:${meta.dockerTag}
-                        """
-                    }
+            def report = """
+========================================
+SmartEvent AI - Build Report #${BUILD_NUMBER}
+========================================
+"""
 
-                    report += "\nPYTHON SERVICES:\n"
-                    env.PYTHON_SERVICES.split(',').each { service ->
-                        def meta = BUILD_REGISTRY[service]
-                        report += """
-                        - ${service}
-                          Docker: ${meta.dockerImage}:${meta.dockerTag}
-                        """
-                    }
-
-                    report += "\nNODE.JS SERVICES:\n"
-                    env.NODE_SERVICES.split(',').each { service ->
-                        def meta = BUILD_REGISTRY[service]
-                        report += """
-                        - ${service}
-                          Docker: ${meta.dockerImage}:${meta.dockerTag}
-                        """
-                    }
-
-                    report += "\nANGULAR FRONTENDS:\n"
-                    env.ANGULAR_SERVICES.split(',').each { service ->
-                        def meta = BUILD_REGISTRY[service]
-                        report += """
-                        - ${service}
-                          Docker: ${meta.dockerImage}:${meta.dockerTag}
-                        """
-                    }
-
-                    report += "\n=======================================\n"
-
-                    echo report
-
-                    writeFile file: "build-report-${BUILD_NUMBER}.txt", text: report
-                    archiveArtifacts artifacts: "build-report-${BUILD_NUMBER}.txt"
+            // Spring Services
+            report += "\nSPRING BOOT SERVICES:\n"
+            env.SPRING_SERVICES.split(',').each { service ->
+                if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
+                    def meta = BUILD_REGISTRY[service]
+                    report += """    - ${service}
+      Version: ${meta.version ?: 'N/A'}
+      Docker: ${meta.dockerImage ?: 'N/A'}:${meta.dockerTag ?: 'N/A'}
+"""
+                } else {
+                    report += "    - ${service}: NOT BUILT\n"
                 }
             }
+
+            // Python Services
+            report += "\nPYTHON SERVICES:\n"
+            env.PYTHON_SERVICES.split(',').each { service ->
+                if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
+                    def meta = BUILD_REGISTRY[service]
+                    report += """    - ${service}
+      Version: ${meta.version ?: 'N/A'}
+      Docker: ${meta.dockerImage ?: 'N/A'}:${meta.dockerTag ?: 'N/A'}
+"""
+                } else {
+                    report += "    - ${service}: NOT BUILT\n"
+                }
+            }
+
+            // Node.js Services
+            report += "\nNODE.JS SERVICES:\n"
+            env.NODE_SERVICES.split(',').each { service ->
+                if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
+                    def meta = BUILD_REGISTRY[service]
+                    report += """    - ${service}
+      Version: ${meta.version ?: 'N/A'}
+      Docker: ${meta.dockerImage ?: 'N/A'}:${meta.dockerTag ?: 'N/A'}
+"""
+                } else {
+                    report += "    - ${service}: NOT BUILT\n"
+                }
+            }
+
+            // Angular Services
+            report += "\nANGULAR FRONTENDS:\n"
+            env.ANGULAR_SERVICES.split(',').each { service ->
+                if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
+                    def meta = BUILD_REGISTRY[service]
+                    report += """    - ${service}
+      Version: ${meta.version ?: 'N/A'}
+      Docker: ${meta.dockerImage ?: 'N/A'}:${meta.dockerTag ?: 'N/A'}
+"""
+                } else {
+                    report += "    - ${service}: NOT BUILT\n"
+                }
+            }
+
+            report += "\n=======================================\n"
+            report += "\nBUILD SUMMARY:\n"
+            report += "Total Services: ${env.SPRING_SERVICES.split(',').size() + env.PYTHON_SERVICES.split(',').size() + env.NODE_SERVICES.split(',').size() + env.ANGULAR_SERVICES.split(',').size()}\n"
+            report += "Successfully Built: ${BUILD_REGISTRY.size()}\n"
+            report += "Failed/Skipped: ${(env.SPRING_SERVICES.split(',').size() + env.PYTHON_SERVICES.split(',').size() + env.NODE_SERVICES.split(',').size() + env.ANGULAR_SERVICES.split(',').size()) - BUILD_REGISTRY.size()}\n"
+            report += "=======================================\n"
+
+            echo report
+
+            writeFile file: "build-report-${BUILD_NUMBER}.txt", text: report
+            archiveArtifacts artifacts: "build-report-${BUILD_NUMBER}.txt", allowEmptyArchive: true
         }
     }
-
+}
     post {
         success {
             script {
