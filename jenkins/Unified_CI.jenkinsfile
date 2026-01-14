@@ -58,23 +58,23 @@ pipeline {
                     dir(service) {
                         echo "🐍 Building ${service}..."
                         
-                        // Créer et activer l'environnement virtuel
+                        // Installation des dépendances
                         sh '''
                             python3 -m venv venv
                             . venv/bin/activate
                             python -m pip install --upgrade pip
-                            pip install -r requirements.txt
-                            pip install pytest pytest-cov pylint
+                            python -m pip install -r requirements.txt
+                            python -m pip install pytest pytest-cov pylint
                         '''
 
-                        // Exécuter les tests et l'analyse
+                        // Tests et analyse
                         sh '''
                             . venv/bin/activate
-                            pylint main.py || true
-                            pytest --cov=. --cov-report=xml || true
+                            python -m pylint main.py || true
+                            python -m pytest --cov=. --cov-report=xml || true
                         '''
 
-                        // Analyse SonarQube
+                        // SonarQube analysis
                         sh """
                             sonar-scanner \
                                 -Dsonar.projectKey=${service} \
