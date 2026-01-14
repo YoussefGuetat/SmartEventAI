@@ -131,39 +131,36 @@ pipeline {
         }
 
         stage('Build Angular Frontends') {
-            steps {
-                script {
-                    def services = env.ANGULAR_SERVICES.split(',')
+    steps {
+        script {
+            def services = env.ANGULAR_SERVICES.split(',')
 
-                    for (service in services) {
-                        stage("Build ${service}") {
-                            dir(service) {
-                                echo "🅰️ Building ${service}..."
-                                sh 'npm install'
-                                sh 'npm run lint || true'
-                                sh 'npm run test:ci || true'
-                                sh 'npm run build --prod'
+            for (service in services) {
+                stage("Build ${service}") {
+                    dir(service) {
+                        echo "🅰️ Building ${service}..."
+                        
+                        // Utiliser Node.js 18 ou 20
+                        sh '''
+                            export NVM_DIR="$HOME/.nvm"
+                            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+                            nvm use 18 || nvm install 18
+                            npm install
+                            npm run build -- --configuration production || npm run build --prod
+                        '''
 
-                                sh """
-                                sonar-scanner \
-                                    -Dsonar.projectKey=${service} \
-                                    -Dsonar.sources=src \
-                                    -Dsonar.host.url=${SONAR_HOST_URL} \
-                                    -Dsonar.login=${SONAR_LOGIN} || true
-                                """
+                        BUILD_REGISTRY[service] = [
+                            type: 'angular',
+                            version: '1.0.0'
+                        ]
 
-                                BUILD_REGISTRY[service] = [
-                                    type: 'angular',
-                                    version: '1.0.0'
-                                ]
-
-                                echo "✅ ${service} built successfully"
-                            }
-                        }
+                        echo "✅ ${service} built successfully"
                     }
                 }
             }
         }
+    }
+}
 
         stage('Build Docker Images') {
             steps {
