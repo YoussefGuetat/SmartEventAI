@@ -12,7 +12,7 @@ pipeline {
         GIT_BRANCH = 'main'
         GITHUB_CREDENTIALS = 'github_credentials'
         DOCKER_HUB_CREDENTIALS = 'dockerhubcr'
-        DOCKERHUB_NAMESPACE = 'SmartEventAI'
+        DOCKERHUB_NAMESPACE = 'smarteventai'
 
         // Downstream
         DOWNSTREAM_PIPELINE = 'SmartEvent_CD'
