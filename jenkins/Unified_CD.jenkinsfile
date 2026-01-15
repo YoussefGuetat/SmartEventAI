@@ -43,7 +43,7 @@ pipeline {
                     
                     // Copier l'artifact depuis le build CI
                     copyArtifacts(
-                        projectName: 'SmartEvent_CI',
+                        projectName: 'SmartEventAI-CI',
                         selector: specific("${params.CI_BUILD_NUMBER}"),
                         filter: 'auth-service/target/*.jar',
                         target: '.'
