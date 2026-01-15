@@ -538,12 +538,12 @@ SmartEvent AI - Build Report #${BUILD_NUMBER}
                 echo "✅ CI Pipeline completed successfully!"
                 echo "🚀 Triggering CD Pipeline..."
 
-              //  build job: env.DOWNSTREAM_PIPELINE,
-                 //     wait: false,
-                   //   parameters: [
-                  //        string(name: 'CI_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
-                     //     string(name: 'DOCKER_TAG', value: "build-${BUILD_NUMBER}")
-                     // ]
+                build job: env.DOWNSTREAM_PIPELINE,
+                      wait: false,
+                      parameters: [
+                          string(name: 'CI_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+                          string(name: 'DOCKER_TAG', value: "build-${BUILD_NUMBER}")
+                      ]
             }
         }
         failure {
