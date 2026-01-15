@@ -54,7 +54,7 @@ pipeline {
             }
         }
 
-       stage('Setup PostgreSQL for Testing') {
+    /*   stage('Setup PostgreSQL for Testing') {
     steps {
         script {
             echo "🐘 Setting up PostgreSQL for testing..."
@@ -161,7 +161,7 @@ pipeline {
             }
         }
 
-     /*   stage('Test Spring Services with PostgreSQL') {
+       stage('Test Spring Services with PostgreSQL') {
             steps {
                 script {
                     def services = env.SPRING_SERVICES.split(',')
@@ -184,9 +184,9 @@ pipeline {
                     }
                 }
             }
-        }*/
+        }
 
-     /*   stage('SonarQube - Spring Services') {
+      stage('SonarQube - Spring Services') {
             steps {
                 script {
                     def services = env.SPRING_SERVICES.split(',')
@@ -206,7 +206,7 @@ pipeline {
                     }
                 }
             }
-        }*/
+        }
 
         stage('Build Python Services') {
             steps {
@@ -285,7 +285,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }*/
 
         stage('Build Angular Frontends') {
             steps {
@@ -357,7 +357,8 @@ pipeline {
                         stage("Docker Build ${service}") {
                             dir(service) {
                                 def metadata = BUILD_REGISTRY[service]
-                                def imageName = "${DOCKERHUB_NAMESPACE}/${service}"
+                                def serviceNameLower = service.toLowerCase()
+                                def imageName = "${DOCKERHUB_NAMESPACE}/${serviceNameLower}"
                                 def imageTag = "build-${BUILD_NUMBER}"
 
                                 echo "🐳 Building Docker image: ${imageName}:${imageTag}"
