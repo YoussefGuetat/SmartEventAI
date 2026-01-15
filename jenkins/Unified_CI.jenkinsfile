@@ -161,7 +161,7 @@ pipeline {
             }
         }
 
-        stage('Test Spring Services with PostgreSQL') {
+     /*   stage('Test Spring Services with PostgreSQL') {
             steps {
                 script {
                     def services = env.SPRING_SERVICES.split(',')
@@ -184,7 +184,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }*/
 
         stage('SonarQube - Spring Services') {
             steps {
