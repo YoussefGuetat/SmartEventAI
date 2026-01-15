@@ -4,6 +4,7 @@ pipeline {
     parameters {
         string(name: 'CI_BUILD_NUMBER', defaultValue: '39', description: 'Build number from CI')
         string(name: 'DOCKER_TAG', defaultValue: 'latest', description: 'Docker tag to deploy')
+        password(name: 'POSTGRES_PASSWORD', defaultValue: '', description: 'PostgreSQL password for AlwaysData')
     }
 
     environment {
@@ -19,7 +20,6 @@ pipeline {
         POSTGRES_PORT = '5432'
         POSTGRES_DB = 'dztn_smartevent'
         POSTGRES_USER = 'dztn'
-        POSTGRES_PASSWORD = 'DZtnDZtn@@22'
     }
 
     stages {
@@ -36,53 +36,53 @@ pipeline {
             }
         }
 
-      stage('Download JAR from CI') {
-    steps {
-        script {
-            echo "📥 Getting auth-service JAR from CI build #${params.CI_BUILD_NUMBER}..."
-            
-            try {
-                // Chemin vers les artifacts archivés
-                def artifactPath = "/var/lib/jenkins/jobs/SmartEventAI-CI/builds/${params.CI_BUILD_NUMBER}/archive"
-                
-                sh """
-                    echo "Looking for JAR in archived artifacts..."
-                    ls -la ${artifactPath}/
+        stage('Download JAR from CI') {
+            steps {
+                script {
+                    echo "📥 Getting auth-service JAR from CI build #${params.CI_BUILD_NUMBER}..."
                     
-                    # Le JAR peut être dans target/ ou à la racine
-                    if [ -f ${artifactPath}/target/auth-service-0.0.1-SNAPSHOT.jar ]; then
-                        echo "✅ Found JAR in target directory"
-                        cp ${artifactPath}/target/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
-                    elif [ -f ${artifactPath}/auth-service-0.0.1-SNAPSHOT.jar ]; then
-                        echo "✅ Found JAR at root"
-                        cp ${artifactPath}/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
-                    else
-                        echo "❌ JAR not found"
-                        echo "Archive contents:"
-                        find ${artifactPath} -name "*.jar" -type f
-                        exit 1
-                    fi
-                    
-                    # Vérifier
-                    if [ ! -f auth-service.jar ]; then
-                        echo "❌ Failed to obtain JAR file"
-                        exit 1
-                    fi
-                    
-                    echo "✅ JAR obtained successfully:"
-                    ls -lh auth-service.jar
-                    file auth-service.jar
-                """
-                
-                echo "✅ JAR downloaded successfully"
-                
-            } catch (Exception e) {
-                echo "❌ Failed to get JAR: ${e.message}"
-                error("Failed to obtain JAR file from CI build #${params.CI_BUILD_NUMBER}")
+                    try {
+                        // Chemin vers les artifacts archivés
+                        def artifactPath = "/var/lib/jenkins/jobs/SmartEventAI-CI/builds/${params.CI_BUILD_NUMBER}/archive"
+                        
+                        sh """
+                            echo "Looking for JAR in archived artifacts..."
+                            ls -la ${artifactPath}/
+                            
+                            # Le JAR peut être dans target/ ou à la racine
+                            if [ -f ${artifactPath}/target/auth-service-0.0.1-SNAPSHOT.jar ]; then
+                                echo "✅ Found JAR in target directory"
+                                cp ${artifactPath}/target/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
+                            elif [ -f ${artifactPath}/auth-service-0.0.1-SNAPSHOT.jar ]; then
+                                echo "✅ Found JAR at root"
+                                cp ${artifactPath}/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
+                            else
+                                echo "❌ JAR not found"
+                                echo "Archive contents:"
+                                find ${artifactPath} -name "*.jar" -type f
+                                exit 1
+                            fi
+                            
+                            # Vérifier
+                            if [ ! -f auth-service.jar ]; then
+                                echo "❌ Failed to obtain JAR file"
+                                exit 1
+                            fi
+                            
+                            echo "✅ JAR obtained successfully:"
+                            ls -lh auth-service.jar
+                            file auth-service.jar
+                        """
+                        
+                        echo "✅ JAR downloaded successfully"
+                        
+                    } catch (Exception e) {
+                        echo "❌ Failed to get JAR: ${e.message}"
+                        error("Failed to obtain JAR file from CI build #${params.CI_BUILD_NUMBER}")
+                    }
+                }
             }
         }
-    }
-}
 
         stage('Prepare Configuration Files') {
             steps {
@@ -97,7 +97,7 @@ server.port=8081
 # PostgreSQL Configuration
 spring.datasource.url=jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
 spring.datasource.username=${POSTGRES_USER}
-spring.datasource.password=${POSTGRES_PASSWORD}
+spring.datasource.password=${params.POSTGRES_PASSWORD}
 spring.datasource.driver-class-name=org.postgresql.Driver
 
 # JPA/Hibernate
@@ -206,20 +206,20 @@ esac
                 script {
                     echo "📤 Transferring files to AlwaysData..."
                     
-                    sshagent(['alwaysdata-ssh']) {
+                    withCredentials([sshUserPrivateKey(credentialsId: 'alwaysdata-ssh', keyFileVariable: 'SSH_KEY')]) {
                         sh """
                             # Créer le répertoire sur AlwaysData
-                            ssh -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} "mkdir -p ${ALWAYSDATA_DEPLOY_DIR}"
+                            ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} "mkdir -p ${ALWAYSDATA_DEPLOY_DIR}"
                             
                             # Transférer les fichiers
                             echo "Transferring auth-service.jar..."
-                            scp -o StrictHostKeyChecking=no auth-service.jar ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
+                            scp -i \${SSH_KEY} -o StrictHostKeyChecking=no auth-service.jar ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
                             
                             echo "Transferring application.properties..."
-                            scp -o StrictHostKeyChecking=no application.properties ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
+                            scp -i \${SSH_KEY} -o StrictHostKeyChecking=no application.properties ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
                             
                             echo "Transferring manage-auth.sh..."
-                            scp -o StrictHostKeyChecking=no manage-auth.sh ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
+                            scp -i \${SSH_KEY} -o StrictHostKeyChecking=no manage-auth.sh ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
                             
                             echo "✅ All files transferred successfully"
                         """
@@ -233,9 +233,9 @@ esac
                 script {
                     echo "🚀 Deploying auth-service on AlwaysData..."
                     
-                    sshagent(['alwaysdata-ssh']) {
+                    withCredentials([sshUserPrivateKey(credentialsId: 'alwaysdata-ssh', keyFileVariable: 'SSH_KEY')]) {
                         sh """
-                            ssh -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
+                            ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
                                 cd ${ALWAYSDATA_DEPLOY_DIR}
                                 
                                 echo "📋 Current directory contents:"
@@ -274,9 +274,9 @@ ENDSSH
                 script {
                     echo "🏥 Running health checks..."
                     
-                    sshagent(['alwaysdata-ssh']) {
+                    withCredentials([sshUserPrivateKey(credentialsId: 'alwaysdata-ssh', keyFileVariable: 'SSH_KEY')]) {
                         sh """
-                            ssh -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
+                            ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
                                 cd ${ALWAYSDATA_DEPLOY_DIR}
                                 
                                 echo "=========================================="
