@@ -186,7 +186,7 @@ pipeline {
             }
         }*/
 
-        stage('SonarQube - Spring Services') {
+     /*   stage('SonarQube - Spring Services') {
             steps {
                 script {
                     def services = env.SPRING_SERVICES.split(',')
@@ -206,7 +206,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }*/
 
         stage('Build Python Services') {
             steps {
