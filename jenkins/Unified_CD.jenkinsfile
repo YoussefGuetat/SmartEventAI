@@ -36,46 +36,40 @@ pipeline {
             }
         }
 
-       stage('Download JAR from CI') {
+      stage('Download JAR from CI') {
     steps {
         script {
             echo "📥 Getting auth-service JAR from CI build #${params.CI_BUILD_NUMBER}..."
             
             try {
-                // Méthode directe : copier depuis le workspace du CI
-                def ciWorkspace = "/var/lib/jenkins/workspace/SmartEventAI-CI"
+                // Chemin vers les artifacts archivés
+                def artifactPath = "/var/lib/jenkins/jobs/SmartEventAI-CI/builds/${params.CI_BUILD_NUMBER}/archive"
                 
                 sh """
-                    echo "Looking for JAR in CI workspace: ${ciWorkspace}"
+                    echo "Looking for JAR in archived artifacts..."
+                    ls -la ${artifactPath}/
                     
-                    # Trouver le JAR dans le workspace CI
-                    if [ -f ${ciWorkspace}/auth-service/target/auth-service-0.0.1-SNAPSHOT.jar ]; then
-                        echo "✅ Found JAR in CI workspace"
-                        cp ${ciWorkspace}/auth-service/target/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
+                    # Le JAR peut être dans target/ ou à la racine
+                    if [ -f ${artifactPath}/target/auth-service-0.0.1-SNAPSHOT.jar ]; then
+                        echo "✅ Found JAR in target directory"
+                        cp ${artifactPath}/target/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
+                    elif [ -f ${artifactPath}/auth-service-0.0.1-SNAPSHOT.jar ]; then
+                        echo "✅ Found JAR at root"
+                        cp ${artifactPath}/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
                     else
-                        echo "❌ JAR not found in CI workspace"
-                        echo "Checking archived artifacts..."
-                        
-                        # Essayer depuis les artifacts archivés
-                        ARTIFACT_PATH="/var/lib/jenkins/jobs/SmartEventAI-CI/builds/${params.CI_BUILD_NUMBER}/archive"
-                        
-                        if [ -f \${ARTIFACT_PATH}/auth-service-0.0.1-SNAPSHOT.jar ]; then
-                            echo "✅ Found JAR in archived artifacts"
-                            cp \${ARTIFACT_PATH}/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
-                        else
-                            echo "❌ JAR not found in archived artifacts either"
-                            ls -la \${ARTIFACT_PATH}/ || echo "Artifact directory doesn't exist"
-                            exit 1
-                        fi
+                        echo "❌ JAR not found"
+                        echo "Archive contents:"
+                        find ${artifactPath} -name "*.jar" -type f
+                        exit 1
                     fi
                     
-                    # Vérifier que le JAR existe
+                    # Vérifier
                     if [ ! -f auth-service.jar ]; then
                         echo "❌ Failed to obtain JAR file"
                         exit 1
                     fi
                     
-                    echo "✅ JAR file obtained successfully:"
+                    echo "✅ JAR obtained successfully:"
                     ls -lh auth-service.jar
                     file auth-service.jar
                 """
