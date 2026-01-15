@@ -36,42 +36,59 @@ pipeline {
             }
         }
 
-        stage('Download JAR from CI') {
-            steps {
-                script {
-                    echo "📥 Downloading auth-service JAR from CI build #${params.CI_BUILD_NUMBER}..."
+       stage('Download JAR from CI') {
+    steps {
+        script {
+            echo "📥 Getting auth-service JAR from CI build #${params.CI_BUILD_NUMBER}..."
+            
+            try {
+                // Méthode directe : copier depuis le workspace du CI
+                def ciWorkspace = "/var/lib/jenkins/workspace/SmartEventAI-CI"
+                
+                sh """
+                    echo "Looking for JAR in CI workspace: ${ciWorkspace}"
                     
-                    try {
-                        // Copier le JAR depuis les artifacts du CI
-                        copyArtifacts(
-                            projectName: 'SmartEventAI-CI',
-                            selector: specific("${params.CI_BUILD_NUMBER}"),
-                            filter: 'auth-service-*.jar',
-                            target: '.',
-                            optional: false,
-                            fingerprintArtifacts: true
-                        )
+                    # Trouver le JAR dans le workspace CI
+                    if [ -f ${ciWorkspace}/auth-service/target/auth-service-0.0.1-SNAPSHOT.jar ]; then
+                        echo "✅ Found JAR in CI workspace"
+                        cp ${ciWorkspace}/auth-service/target/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
+                    else
+                        echo "❌ JAR not found in CI workspace"
+                        echo "Checking archived artifacts..."
                         
-                        // Renommer le JAR
-                        sh """
-                            mv auth-service-*.jar auth-service.jar
-                            
-                            echo "✅ JAR file info:"
-                            ls -lh auth-service.jar
-                            file auth-service.jar
-                            echo "Size: \$(du -h auth-service.jar | cut -f1)"
-                        """
+                        # Essayer depuis les artifacts archivés
+                        ARTIFACT_PATH="/var/lib/jenkins/jobs/SmartEventAI-CI/builds/${params.CI_BUILD_NUMBER}/archive"
                         
-                        echo "✅ JAR downloaded successfully"
-                        
-                    } catch (Exception e) {
-                        echo "❌ Failed to download JAR from CI build #${params.CI_BUILD_NUMBER}"
-                        echo "Error: ${e.message}"
-                        error("Failed to copy artifacts. Make sure CI build #${params.CI_BUILD_NUMBER} exists and has artifacts.")
-                    }
-                }
+                        if [ -f \${ARTIFACT_PATH}/auth-service-0.0.1-SNAPSHOT.jar ]; then
+                            echo "✅ Found JAR in archived artifacts"
+                            cp \${ARTIFACT_PATH}/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
+                        else
+                            echo "❌ JAR not found in archived artifacts either"
+                            ls -la \${ARTIFACT_PATH}/ || echo "Artifact directory doesn't exist"
+                            exit 1
+                        fi
+                    fi
+                    
+                    # Vérifier que le JAR existe
+                    if [ ! -f auth-service.jar ]; then
+                        echo "❌ Failed to obtain JAR file"
+                        exit 1
+                    fi
+                    
+                    echo "✅ JAR file obtained successfully:"
+                    ls -lh auth-service.jar
+                    file auth-service.jar
+                """
+                
+                echo "✅ JAR downloaded successfully"
+                
+            } catch (Exception e) {
+                echo "❌ Failed to get JAR: ${e.message}"
+                error("Failed to obtain JAR file from CI build #${params.CI_BUILD_NUMBER}")
             }
         }
+    }
+}
 
         stage('Prepare Configuration Files') {
             steps {
