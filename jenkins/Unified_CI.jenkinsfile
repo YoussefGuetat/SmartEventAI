@@ -25,7 +25,13 @@ pipeline {
         SPRING_SERVICES = 'config-server,eureka-server,gateway-service,auth-service,event-service'
         NODE_SERVICES = 'workflow-service'
         PYTHON_SERVICES = 'ai-service'
-        ANGULAR_SERVICES = 'frontAdmin'
+        ANGULAR_SERVICES = 'frontadmin'
+        
+        // PostgreSQL Configuration
+        POSTGRES_CONTAINER = 'smartevent-postgres-ci'
+        POSTGRES_DB = 'auth_db'
+        POSTGRES_USER = 'auth_user'
+        POSTGRES_PASSWORD = 'auth123'
     }
 
     stages {
@@ -48,7 +54,64 @@ pipeline {
             }
         }
 
-   stage('Build Spring Services') {
+        stage('Setup PostgreSQL for Testing') {
+            steps {
+                script {
+                    echo "🐘 Setting up PostgreSQL for testing..."
+                    
+                    try {
+                        // Arrêter et supprimer l'ancien container s'il existe
+                        sh """
+                            docker stop ${POSTGRES_CONTAINER} 2>/dev/null || true
+                            docker rm ${POSTGRES_CONTAINER} 2>/dev/null || true
+                        """
+                        
+                        // Démarrer PostgreSQL
+                        sh """
+                            docker run -d \
+                                --name ${POSTGRES_CONTAINER} \
+                                -e POSTGRES_USER=${POSTGRES_USER} \
+                                -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
+                                -e POSTGRES_DB=${POSTGRES_DB} \
+                                -p 5432:5432 \
+                                postgres:15-alpine
+                        """
+                        
+                        // Attendre que PostgreSQL soit prêt
+                        echo "⏳ Waiting for PostgreSQL to be ready..."
+                        sh """
+                            timeout 30 bash -c 'until docker exec ${POSTGRES_CONTAINER} pg_isready -U ${POSTGRES_USER}; do
+                                echo "Waiting for PostgreSQL..."
+                                sleep 2
+                            done'
+                        """
+                        
+                        // Vérifier la connexion
+                        sh """
+                            docker exec ${POSTGRES_CONTAINER} psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "SELECT version();"
+                        """
+                        
+                        echo "✅ PostgreSQL is ready and running"
+                        
+                        // Stocker les infos de connexion
+                        BUILD_REGISTRY['postgres'] = [
+                            container: POSTGRES_CONTAINER,
+                            host: 'localhost',
+                            port: '5432',
+                            database: POSTGRES_DB,
+                            user: POSTGRES_USER,
+                            password: POSTGRES_PASSWORD
+                        ]
+                        
+                    } catch (Exception e) {
+                        echo "❌ Failed to setup PostgreSQL: ${e.message}"
+                        error("PostgreSQL setup failed")
+                    }
+                }
+            }
+        }
+
+        stage('Build Spring Services') {
             steps {
                 script {
                     def services = env.SPRING_SERVICES.split(',')
@@ -92,7 +155,7 @@ pipeline {
             }
         }
 
-        stage('Test Spring Services') {
+        stage('Test Spring Services with PostgreSQL') {
             steps {
                 script {
                     def services = env.SPRING_SERVICES.split(',')
@@ -100,8 +163,16 @@ pipeline {
                     for (service in services) {
                         stage("Test ${service}") {
                             dir(service) {
-                                echo "🧪 Testing ${service}..."
-                                sh 'mvn test || true'
+                                echo "🧪 Testing ${service} with PostgreSQL..."
+                                
+                                // Configurer les variables d'environnement pour les tests
+                                withEnv([
+                                    "SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/${POSTGRES_DB}",
+                                    "SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}",
+                                    "SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}"
+                                ]) {
+                                    sh 'mvn test || true'
+                                }
                             }
                         }
                     }
@@ -131,53 +202,50 @@ pipeline {
             }
         }
 
- stage('Build Python Services') {
-    steps {
-        script {
-            def services = env.PYTHON_SERVICES.split(',')
+        stage('Build Python Services') {
+            steps {
+                script {
+                    def services = env.PYTHON_SERVICES.split(',')
 
-            for (service in services) {
-                stage("Build ${service}") {
-                    dir(service) {
-                        echo "🐍 Building ${service}..."
-                        
-                        // Installation des dépendances
-                        sh '''
-                            python3 -m venv venv
-                            . venv/bin/activate
-                            python -m pip install --upgrade pip
-                            python -m pip install pytest pytest-cov pylint
-                        '''
+                    for (service in services) {
+                        stage("Build ${service}") {
+                            dir(service) {
+                                echo "🐍 Building ${service}..."
+                                
+                                sh '''
+                                    python3 -m venv venv
+                                    . venv/bin/activate
+                                    python -m pip install --upgrade pip
+                                    python -m pip install pytest pytest-cov pylint
+                                '''
 
-                        // Tests et analyse
-                        sh '''
-                            . venv/bin/activate
-                            python -m pylint main.py || true
-                            python -m pytest --cov=. --cov-report=xml || true
-                        '''
+                                sh '''
+                                    . venv/bin/activate
+                                    python -m pylint main.py || true
+                                    python -m pytest --cov=. --cov-report=xml || true
+                                '''
 
-                        // SonarQube analysis
-                        sh """
-                            sonar-scanner \
-                                -Dsonar.projectKey=${service} \
-                                -Dsonar.sources=. \
-                                -Dsonar.host.url=${SONAR_HOST_URL} \
-                                -Dsonar.login=${SONAR_LOGIN} \
-                                -Dsonar.python.coverage.reportPaths=coverage.xml || true
-                        """
+                                sh """
+                                    sonar-scanner \
+                                        -Dsonar.projectKey=${service} \
+                                        -Dsonar.sources=. \
+                                        -Dsonar.host.url=${SONAR_HOST_URL} \
+                                        -Dsonar.login=${SONAR_LOGIN} \
+                                        -Dsonar.python.coverage.reportPaths=coverage.xml || true
+                                """
 
-                        BUILD_REGISTRY[service] = [
-                            type: 'python',
-                            version: '1.0.0'
-                        ]
+                                BUILD_REGISTRY[service] = [
+                                    type: 'python',
+                                    version: '1.0.0'
+                                ]
 
-                        echo "✅ ${service} built successfully"
+                                echo "✅ ${service} built successfully"
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-}
 
         stage('Build Node.js Services') {
             steps {
@@ -212,7 +280,6 @@ pipeline {
                 }
             }
         }
-       
 
         stage('Build Angular Frontends') {
             steps {
@@ -258,217 +325,236 @@ pipeline {
             }
         }
 
-       stage('Build Docker Images') {
-    steps {
-        script {
-            echo "🐳 Building Docker images for all services..."
+        stage('Build Docker Images') {
+            steps {
+                script {
+                    echo "🐳 Building Docker images for all services..."
 
-            def allServices = []
-            allServices.addAll(env.SPRING_SERVICES.split(','))
-            allServices.addAll(env.PYTHON_SERVICES.split(','))
-            allServices.addAll(env.NODE_SERVICES.split(','))
-            allServices.addAll(env.ANGULAR_SERVICES.split(','))
+                    def allServices = []
+                    allServices.addAll(env.SPRING_SERVICES.split(','))
+                    allServices.addAll(env.PYTHON_SERVICES.split(','))
+                    allServices.addAll(env.NODE_SERVICES.split(','))
+                    allServices.addAll(env.ANGULAR_SERVICES.split(','))
 
-            // Filtrer uniquement les services qui ont été construits avec succès
-            def successfulServices = allServices.findAll { service ->
-                BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null
-            }
+                    def successfulServices = allServices.findAll { service ->
+                        BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null
+                    }
 
-            if (successfulServices.isEmpty()) {
-                echo "⚠️ No services to build Docker images for"
-                return
-            }
+                    if (successfulServices.isEmpty()) {
+                        echo "⚠️ No services to build Docker images for"
+                        return
+                    }
 
-            echo "📦 Building Docker images for: ${successfulServices.join(', ')}"
+                    echo "📦 Building Docker images for: ${successfulServices.join(', ')}"
 
-            for (service in successfulServices) {
-                stage("Docker Build ${service}") {
-                    dir(service) {
-                        def metadata = BUILD_REGISTRY[service]
-                        def imageName = "${DOCKERHUB_NAMESPACE}/${service}"
-                        def imageTag = "build-${BUILD_NUMBER}"
+                    for (service in successfulServices) {
+                        stage("Docker Build ${service}") {
+                            dir(service) {
+                                def metadata = BUILD_REGISTRY[service]
+                                def imageName = "${DOCKERHUB_NAMESPACE}/${service}"
+                                def imageTag = "build-${BUILD_NUMBER}"
 
-                        echo "🐳 Building Docker image: ${imageName}:${imageTag}"
+                                echo "🐳 Building Docker image: ${imageName}:${imageTag}"
 
-                        if (fileExists('Dockerfile')) {
-                            try {
-                                if (metadata.type == 'spring' && metadata.jarFile) {
-                                    if (fileExists(metadata.jarFile)) {
-                                        docker.build("${imageName}:${imageTag}", "--build-arg JAR_FILE=${metadata.jarFile} .")
-                                    } else {
-                                        echo "⚠️ JAR file not found: ${metadata.jarFile}"
-                                        error("JAR file not found")
+                                if (fileExists('Dockerfile')) {
+                                    try {
+                                        if (metadata.type == 'spring' && metadata.jarFile) {
+                                            if (fileExists(metadata.jarFile)) {
+                                                docker.build("${imageName}:${imageTag}", "--build-arg JAR_FILE=${metadata.jarFile} .")
+                                            } else {
+                                                echo "⚠️ JAR file not found: ${metadata.jarFile}"
+                                                error("JAR file not found")
+                                            }
+                                        } else {
+                                            docker.build("${imageName}:${imageTag}", ".")
+                                        }
+
+                                        docker.image("${imageName}:${imageTag}").tag('latest')
+
+                                        BUILD_REGISTRY[service].dockerImage = imageName
+                                        BUILD_REGISTRY[service].dockerTag = imageTag
+
+                                        echo "✅ Docker image built: ${imageName}:${imageTag}"
+                                    } catch (Exception e) {
+                                        echo "❌ Failed to build Docker image for ${service}: ${e.message}"
                                     }
                                 } else {
-                                    docker.build("${imageName}:${imageTag}", ".")
+                                    echo "⚠️ Dockerfile not found for ${service}"
                                 }
-
-                                docker.image("${imageName}:${imageTag}").tag('latest')
-
-                                BUILD_REGISTRY[service].dockerImage = imageName
-                                BUILD_REGISTRY[service].dockerTag = imageTag
-
-                                echo "✅ Docker image built: ${imageName}:${imageTag}"
-                            } catch (Exception e) {
-                                echo "❌ Failed to build Docker image for ${service}: ${e.message}"
-                                // Ne pas faire échouer le pipeline, continuer avec les autres services
                             }
-                        } else {
-                            echo "⚠️ Dockerfile not found for ${service}"
                         }
                     }
                 }
             }
         }
-    }
-}
 
-      stage('Push Docker Images') {
-    steps {
-        script {
-            echo "📤 Pushing Docker images to Docker Hub..."
+        stage('Push Docker Images') {
+            steps {
+                script {
+                    echo "📤 Pushing Docker images to Docker Hub..."
 
-            def allServices = []
-            allServices.addAll(env.SPRING_SERVICES.split(','))
-            allServices.addAll(env.PYTHON_SERVICES.split(','))
-            allServices.addAll(env.NODE_SERVICES.split(','))
-            allServices.addAll(env.ANGULAR_SERVICES.split(','))
+                    def allServices = []
+                    allServices.addAll(env.SPRING_SERVICES.split(','))
+                    allServices.addAll(env.PYTHON_SERVICES.split(','))
+                    allServices.addAll(env.NODE_SERVICES.split(','))
+                    allServices.addAll(env.ANGULAR_SERVICES.split(','))
 
-            // Filtrer uniquement les services qui ont une image Docker
-            def servicesToPush = allServices.findAll { service ->
-                BUILD_REGISTRY.containsKey(service) && 
-                BUILD_REGISTRY[service] != null &&
-                BUILD_REGISTRY[service].dockerImage != null
-            }
-
-            if (servicesToPush.isEmpty()) {
-                echo "⚠️ No Docker images to push"
-                return
-            }
-
-            echo "📦 Pushing images for: ${servicesToPush.join(', ')}"
-
-            docker.withRegistry('https://registry.hub.docker.com', env.DOCKER_HUB_CREDENTIALS) {
-                for (service in servicesToPush) {
-                    try {
-                        def metadata = BUILD_REGISTRY[service]
-                        echo "📤 Pushing ${metadata.dockerImage}:${metadata.dockerTag}"
-                        docker.image("${metadata.dockerImage}:${metadata.dockerTag}").push()
-                        docker.image("${metadata.dockerImage}:latest").push()
-                        echo "✅ ${service} pushed successfully"
-                    } catch (Exception e) {
-                        echo "❌ Failed to push ${service}: ${e.message}"
+                    def servicesToPush = allServices.findAll { service ->
+                        BUILD_REGISTRY.containsKey(service) && 
+                        BUILD_REGISTRY[service] != null &&
+                        BUILD_REGISTRY[service].dockerImage != null
                     }
+
+                    if (servicesToPush.isEmpty()) {
+                        echo "⚠️ No Docker images to push"
+                        return
+                    }
+
+                    echo "📦 Pushing images for: ${servicesToPush.join(', ')}"
+
+                    docker.withRegistry('https://registry.hub.docker.com', env.DOCKER_HUB_CREDENTIALS) {
+                        for (service in servicesToPush) {
+                            try {
+                                def metadata = BUILD_REGISTRY[service]
+                                echo "📤 Pushing ${metadata.dockerImage}:${metadata.dockerTag}"
+                                docker.image("${metadata.dockerImage}:${metadata.dockerTag}").push()
+                                docker.image("${metadata.dockerImage}:latest").push()
+                                echo "✅ ${service} pushed successfully"
+                            } catch (Exception e) {
+                                echo "❌ Failed to push ${service}: ${e.message}"
+                            }
+                        }
+                    }
+
+                    echo "✅ Docker push stage completed"
                 }
             }
-
-            echo "✅ Docker push stage completed"
         }
-    }
-}
 
-      stage('Generate Build Report') {
-    steps {
-        script {
-            echo "📊 Generating build report..."
+        stage('Generate Build Report') {
+            steps {
+                script {
+                    echo "📊 Generating build report..."
 
-            def report = """
+                    def report = """
 ========================================
 SmartEvent AI - Build Report #${BUILD_NUMBER}
 ========================================
 """
 
-            // Spring Services
-            report += "\nSPRING BOOT SERVICES:\n"
-            env.SPRING_SERVICES.split(',').each { service ->
-                if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
-                    def meta = BUILD_REGISTRY[service]
-                    report += """    - ${service}
+                    // PostgreSQL Info
+                    report += "\nDATABASE:\n"
+                    if (BUILD_REGISTRY.containsKey('postgres')) {
+                        def pg = BUILD_REGISTRY['postgres']
+                        report += """    ✅ PostgreSQL
+      Container: ${pg.container}
+      Host: ${pg.host}
+      Port: ${pg.port}
+      Database: ${pg.database}
+"""
+                    }
+
+                    // Spring Services
+                    report += "\nSPRING BOOT SERVICES:\n"
+                    env.SPRING_SERVICES.split(',').each { service ->
+                        if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
+                            def meta = BUILD_REGISTRY[service]
+                            report += """    - ${service}
       Version: ${meta.version ?: 'N/A'}
       Docker: ${meta.dockerImage ?: 'N/A'}:${meta.dockerTag ?: 'N/A'}
 """
-                } else {
-                    report += "    - ${service}: NOT BUILT\n"
-                }
-            }
+                        } else {
+                            report += "    - ${service}: NOT BUILT\n"
+                        }
+                    }
 
-            // Python Services
-            report += "\nPYTHON SERVICES:\n"
-            env.PYTHON_SERVICES.split(',').each { service ->
-                if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
-                    def meta = BUILD_REGISTRY[service]
-                    report += """    - ${service}
+                    // Python Services
+                    report += "\nPYTHON SERVICES:\n"
+                    env.PYTHON_SERVICES.split(',').each { service ->
+                        if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
+                            def meta = BUILD_REGISTRY[service]
+                            report += """    - ${service}
       Version: ${meta.version ?: 'N/A'}
       Docker: ${meta.dockerImage ?: 'N/A'}:${meta.dockerTag ?: 'N/A'}
 """
-                } else {
-                    report += "    - ${service}: NOT BUILT\n"
-                }
-            }
+                        } else {
+                            report += "    - ${service}: NOT BUILT\n"
+                        }
+                    }
 
-            // Node.js Services
-            report += "\nNODE.JS SERVICES:\n"
-            env.NODE_SERVICES.split(',').each { service ->
-                if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
-                    def meta = BUILD_REGISTRY[service]
-                    report += """    - ${service}
+                    // Node.js Services
+                    report += "\nNODE.JS SERVICES:\n"
+                    env.NODE_SERVICES.split(',').each { service ->
+                        if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
+                            def meta = BUILD_REGISTRY[service]
+                            report += """    - ${service}
       Version: ${meta.version ?: 'N/A'}
       Docker: ${meta.dockerImage ?: 'N/A'}:${meta.dockerTag ?: 'N/A'}
 """
-                } else {
-                    report += "    - ${service}: NOT BUILT\n"
-                }
-            }
+                        } else {
+                            report += "    - ${service}: NOT BUILT\n"
+                        }
+                    }
 
-            // Angular Services
-            report += "\nANGULAR FRONTENDS:\n"
-            env.ANGULAR_SERVICES.split(',').each { service ->
-                if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
-                    def meta = BUILD_REGISTRY[service]
-                    report += """    - ${service}
+                    // Angular Services
+                    report += "\nANGULAR FRONTENDS:\n"
+                    env.ANGULAR_SERVICES.split(',').each { service ->
+                        if (BUILD_REGISTRY.containsKey(service) && BUILD_REGISTRY[service] != null) {
+                            def meta = BUILD_REGISTRY[service]
+                            report += """    - ${service}
       Version: ${meta.version ?: 'N/A'}
       Docker: ${meta.dockerImage ?: 'N/A'}:${meta.dockerTag ?: 'N/A'}
 """
-                } else {
-                    report += "    - ${service}: NOT BUILT\n"
+                        } else {
+                            report += "    - ${service}: NOT BUILT\n"
+                        }
+                    }
+
+                    report += "\n=======================================\n"
+                    report += "\nBUILD SUMMARY:\n"
+                    report += "Total Services: ${env.SPRING_SERVICES.split(',').size() + env.PYTHON_SERVICES.split(',').size() + env.NODE_SERVICES.split(',').size() + env.ANGULAR_SERVICES.split(',').size()}\n"
+                    report += "Successfully Built: ${BUILD_REGISTRY.size() - 1}\n"  // -1 pour exclure postgres
+                    report += "Failed/Skipped: ${(env.SPRING_SERVICES.split(',').size() + env.PYTHON_SERVICES.split(',').size() + env.NODE_SERVICES.split(',').size() + env.ANGULAR_SERVICES.split(',').size()) - (BUILD_REGISTRY.size() - 1)}\n"
+                    report += "=======================================\n"
+
+                    echo report
+
+                    writeFile file: "build-report-${BUILD_NUMBER}.txt", text: report
+                    archiveArtifacts artifacts: "build-report-${BUILD_NUMBER}.txt", allowEmptyArchive: true
                 }
             }
-
-            report += "\n=======================================\n"
-            report += "\nBUILD SUMMARY:\n"
-            report += "Total Services: ${env.SPRING_SERVICES.split(',').size() + env.PYTHON_SERVICES.split(',').size() + env.NODE_SERVICES.split(',').size() + env.ANGULAR_SERVICES.split(',').size()}\n"
-            report += "Successfully Built: ${BUILD_REGISTRY.size()}\n"
-            report += "Failed/Skipped: ${(env.SPRING_SERVICES.split(',').size() + env.PYTHON_SERVICES.split(',').size() + env.NODE_SERVICES.split(',').size() + env.ANGULAR_SERVICES.split(',').size()) - BUILD_REGISTRY.size()}\n"
-            report += "=======================================\n"
-
-            echo report
-
-            writeFile file: "build-report-${BUILD_NUMBER}.txt", text: report
-            archiveArtifacts artifacts: "build-report-${BUILD_NUMBER}.txt", allowEmptyArchive: true
         }
     }
-}
-}
+
     post {
         success {
             script {
                 echo "✅ CI Pipeline completed successfully!"
                 echo "🚀 Triggering CD Pipeline..."
 
-               // build job: env.DOWNSTREAM_PIPELINE,
-               //       wait: false,
-               //       parameters: [
-              //            string(name: 'CI_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
-              //            string(name: 'DOCKER_TAG', value: "build-${BUILD_NUMBER}")
-              //        ]
+              //  build job: env.DOWNSTREAM_PIPELINE,
+                 //     wait: false,
+                   //   parameters: [
+                  //        string(name: 'CI_BUILD_NUMBER', value: "${BUILD_NUMBER}"),
+                     //     string(name: 'DOCKER_TAG', value: "build-${BUILD_NUMBER}")
+                     // ]
             }
         }
         failure {
             echo "❌ CI Pipeline failed!"
         }
         always {
-            echo "🧹 Cleaning up..."
-            cleanWs()
+            script {
+                echo "🧹 Cleaning up..."
+                
+                // Arrêter et supprimer le container PostgreSQL
+                sh """
+                    docker stop ${POSTGRES_CONTAINER} 2>/dev/null || true
+                    docker rm ${POSTGRES_CONTAINER} 2>/dev/null || true
+                """
+                
+                cleanWs()
+            }
         }
     }
 }
