@@ -1,0 +1,417 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'CI_BUILD_NUMBER', defaultValue: '1', description: 'Build number from CI')
+        string(name: 'DOCKER_TAG', defaultValue: 'latest', description: 'Docker tag to deploy')
+    }
+
+    environment {
+        DOCKERHUB_NAMESPACE = 'guetatyoussef'
+        
+        // AlwaysData Configuration
+        ALWAYSDATA_USER = 'dztn'
+        ALWAYSDATA_HOST = 'ssh-dztn.alwaysdata.net'
+        ALWAYSDATA_DEPLOY_DIR = '~/auth-service'
+        
+        // PostgreSQL Configuration (from AlwaysData interface)
+        POSTGRES_HOST = 'postgresql-dztn.alwaysdata.net'
+        POSTGRES_PORT = '5432'
+        POSTGRES_DB = 'dztn_smartevent'
+        POSTGRES_USER = 'dztn'
+        POSTGRES_PASSWORD = credentials('alwaysdata-postgres-password')  // À ajouter dans Jenkins
+    }
+
+    stages {
+        stage('Initialize Deployment') {
+            steps {
+                script {
+                    echo "=========================================="
+                    echo "  SmartEvent AI - CD Pipeline"
+                    echo "  Deploying to AlwaysData"
+                    echo "  Build #${params.CI_BUILD_NUMBER}"
+                    echo "  Docker Tag: ${params.DOCKER_TAG}"
+                    echo "=========================================="
+                }
+            }
+        }
+
+        stage('Download JAR from CI') {
+            steps {
+                script {
+                    echo "📥 Downloading auth-service JAR from CI build..."
+                    
+                    // Copier l'artifact depuis le build CI
+                    copyArtifacts(
+                        projectName: 'SmartEvent_CI',
+                        selector: specific("${params.CI_BUILD_NUMBER}"),
+                        filter: 'auth-service/target/*.jar',
+                        target: '.'
+                    )
+                    
+                    // Renommer le JAR
+                    sh """
+                        find auth-service/target -name '*.jar' -exec cp {} auth-service.jar \\;
+                        ls -lh auth-service.jar
+                    """
+                    
+                    echo "✅ JAR downloaded successfully"
+                }
+            }
+        }
+
+        stage('Prepare Configuration Files') {
+            steps {
+                script {
+                    echo "📝 Creating configuration files..."
+                    
+                    // Créer application.properties
+                    writeFile file: 'application.properties', text: """
+# Server Configuration
+server.port=8081
+
+# PostgreSQL Configuration
+spring.datasource.url=jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+spring.datasource.username=${POSTGRES_USER}
+spring.datasource.password=${POSTGRES_PASSWORD}
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# JPA/Hibernate
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=false
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.properties.hibernate.format_sql=true
+
+# Logging
+logging.level.org.springframework=INFO
+logging.level.com.smartevent=DEBUG
+logging.file.name=auth-service.log
+
+# Actuator
+management.endpoints.web.exposure.include=health,info,metrics
+management.endpoint.health.show-details=always
+"""
+                    
+                    // Créer script de gestion
+                    writeFile file: 'manage-auth.sh', text: '''#!/bin/bash
+
+PID_FILE="auth-service.pid"
+JAR_FILE="auth-service.jar"
+LOG_FILE="auth-service.log"
+CONFIG_FILE="application.properties"
+
+case "$1" in
+  start)
+    echo "🚀 Starting auth-service..."
+    if [ -f $PID_FILE ] && ps -p $(cat $PID_FILE) > /dev/null 2>&1; then
+      echo "⚠️  auth-service is already running (PID: $(cat $PID_FILE))"
+      exit 1
+    fi
+    nohup java -jar $JAR_FILE --spring.config.location=$CONFIG_FILE > $LOG_FILE 2>&1 &
+    echo $! > $PID_FILE
+    echo "✅ auth-service started (PID: $(cat $PID_FILE))"
+    sleep 3
+    tail -n 20 $LOG_FILE
+    ;;
+    
+  stop)
+    echo "🛑 Stopping auth-service..."
+    if [ -f $PID_FILE ]; then
+      PID=$(cat $PID_FILE)
+      kill $PID 2>/dev/null
+      rm $PID_FILE
+      echo "✅ auth-service stopped"
+    else
+      echo "❌ PID file not found, killing all java processes for auth-service"
+      pkill -f auth-service.jar
+    fi
+    ;;
+    
+  restart)
+    $0 stop
+    sleep 3
+    $0 start
+    ;;
+    
+  status)
+    if [ -f $PID_FILE ]; then
+      PID=$(cat $PID_FILE)
+      if ps -p $PID > /dev/null 2>&1; then
+        echo "✅ auth-service is running (PID: $PID)"
+        echo ""
+        echo "📊 Memory usage:"
+        ps -p $PID -o pid,vsz,rss,comm
+        echo ""
+        echo "🌐 Network connections:"
+        netstat -tulpn 2>/dev/null | grep $PID || lsof -i -P -n 2>/dev/null | grep $PID
+      else
+        echo "❌ auth-service is not running (stale PID file)"
+        rm $PID_FILE
+      fi
+    else
+      echo "❌ auth-service is not running"
+    fi
+    ;;
+    
+  logs)
+    if [ "$2" = "follow" ] || [ "$2" = "f" ]; then
+      tail -f $LOG_FILE
+    else
+      tail -n 100 $LOG_FILE
+    fi
+    ;;
+    
+  health)
+    echo "🏥 Checking health endpoint..."
+    curl -s http://localhost:8081/actuator/health || echo "❌ Health check failed"
+    ;;
+    
+  *)
+    echo "Usage: $0 {start|stop|restart|status|logs [follow]|health}"
+    exit 1
+    ;;
+esac
+'''
+                    
+                    sh 'chmod +x manage-auth.sh'
+                    
+                    echo "✅ Configuration files created"
+                }
+            }
+        }
+
+        stage('Transfer Files to AlwaysData') {
+            steps {
+                script {
+                    echo "📤 Transferring files to AlwaysData..."
+                    
+                    sshagent(['alwaysdata-ssh']) {
+                        sh """
+                            # Créer le répertoire sur AlwaysData
+                            ssh -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} "mkdir -p ${ALWAYSDATA_DEPLOY_DIR}"
+                            
+                            # Transférer le JAR
+                            scp -o StrictHostKeyChecking=no auth-service.jar ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
+                            
+                            # Transférer application.properties
+                            scp -o StrictHostKeyChecking=no application.properties ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
+                            
+                            # Transférer le script de gestion
+                            scp -o StrictHostKeyChecking=no manage-auth.sh ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
+                            
+                            echo "✅ Files transferred successfully"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Deploy on AlwaysData') {
+            steps {
+                script {
+                    echo "🚀 Deploying auth-service on AlwaysData..."
+                    
+                    sshagent(['alwaysdata-ssh']) {
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
+                                cd ${ALWAYSDATA_DEPLOY_DIR}
+                                
+                                echo "📋 Current directory:"
+                                pwd
+                                ls -lh
+                                
+                                echo ""
+                                echo "🛑 Stopping old service..."
+                                ./manage-auth.sh stop || true
+                                
+                                echo ""
+                                echo "🧹 Cleaning old logs..."
+                                rm -f auth-service.log.* 2>/dev/null || true
+                                
+                                echo ""
+                                echo "⏳ Waiting 3 seconds..."
+                                sleep 3
+                                
+                                echo ""
+                                echo "🚀 Starting new service..."
+                                ./manage-auth.sh start
+                                
+                                echo ""
+                                echo "⏳ Waiting 10 seconds for startup..."
+                                sleep 10
+                                
+                                echo ""
+                                echo "📊 Service status:"
+                                ./manage-auth.sh status
+ENDSSH
+                        """
+                    }
+                    
+                    echo "✅ Deployment completed"
+                }
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "🏥 Running health checks..."
+                    
+                    sshagent(['alwaysdata-ssh']) {
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
+                                cd ${ALWAYSDATA_DEPLOY_DIR}
+                                
+                                echo "=========================================="
+                                echo "Service Status:"
+                                echo "=========================================="
+                                ./manage-auth.sh status
+                                
+                                echo ""
+                                echo "=========================================="
+                                echo "Health Check:"
+                                echo "=========================================="
+                                ./manage-auth.sh health
+                                
+                                echo ""
+                                echo "=========================================="
+                                echo "Recent Logs (last 30 lines):"
+                                echo "=========================================="
+                                ./manage-auth.sh logs | tail -30
+ENDSSH
+                        """
+                    }
+                    
+                    echo "✅ Health checks completed"
+                }
+            }
+        }
+
+        stage('Generate Deployment Report') {
+            steps {
+                script {
+                    echo "📊 Generating deployment report..."
+                    
+                    def report = """
+========================================
+SmartEvent AI - Deployment Report
+========================================
+
+Build Number: ${params.CI_BUILD_NUMBER}
+Docker Tag: ${params.DOCKER_TAG}
+Deployment Date: ${new Date()}
+Deployed By: Jenkins CD Pipeline
+
+========================================
+DEPLOYMENT TARGET: AlwaysData (Cloud Privé)
+========================================
+
+SERVER INFORMATION:
+  - Host: ${ALWAYSDATA_HOST}
+  - User: ${ALWAYSDATA_USER}
+  - Deploy Directory: ${ALWAYSDATA_DEPLOY_DIR}
+
+DATABASE INFORMATION:
+  - Host: ${POSTGRES_HOST}
+  - Port: ${POSTGRES_PORT}
+  - Database: ${POSTGRES_DB}
+  - User: ${POSTGRES_USER}
+
+SERVICE DEPLOYED:
+  ✅ auth-service
+     - JAR: auth-service.jar
+     - Port: 8081
+     - Status: Running
+     - Health: http://localhost:8081/actuator/health
+
+========================================
+ACCESS INFORMATION:
+========================================
+
+SSH Access:
+  ssh ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}
+  cd ${ALWAYSDATA_DEPLOY_DIR}
+
+Service Management:
+  ./manage-auth.sh start       # Start service
+  ./manage-auth.sh stop        # Stop service
+  ./manage-auth.sh restart     # Restart service
+  ./manage-auth.sh status      # Check status
+  ./manage-auth.sh logs        # View logs
+  ./manage-auth.sh health      # Health check
+
+Direct Commands:
+  View logs: tail -f auth-service.log
+  Check process: ps aux | grep auth-service
+  Check port: netstat -tulpn | grep 8081
+
+========================================
+POST-DEPLOYMENT VERIFICATION:
+========================================
+
+1. Check service status:
+   ./manage-auth.sh status
+
+2. Verify health endpoint:
+   ./manage-auth.sh health
+
+3. Monitor logs:
+   ./manage-auth.sh logs follow
+
+========================================
+Deployment completed successfully! ✅
+========================================
+"""
+                    
+                    echo report
+                    
+                    writeFile file: "deployment-report-${params.CI_BUILD_NUMBER}.txt", text: report
+                    archiveArtifacts artifacts: "deployment-report-${params.CI_BUILD_NUMBER}.txt", allowEmptyArchive: true
+                    
+                    echo "✅ Report generated and archived"
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                echo ""
+                echo "✅ =========================================="
+                echo "✅ DEPLOYMENT SUCCESSFUL!"
+                echo "✅ =========================================="
+                echo "✅ auth-service deployed on AlwaysData"
+                echo "✅ Service is running on port 8081"
+                echo "✅ Access: ssh ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}"
+                echo "✅ =========================================="
+                echo ""
+            }
+        }
+        failure {
+            script {
+                echo ""
+                echo "❌ =========================================="
+                echo "❌ DEPLOYMENT FAILED!"
+                echo "❌ =========================================="
+                echo "❌ Check the logs above for details"
+                echo "❌ You can manually check on AlwaysData:"
+                echo "❌ ssh ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}"
+                echo "❌ cd ${ALWAYSDATA_DEPLOY_DIR}"
+                echo "❌ ./manage-auth.sh logs"
+                echo "❌ =========================================="
+                echo ""
+            }
+        }
+        always {
+            script {
+                echo "🧹 Cleaning up workspace..."
+                sh '''
+                    rm -f auth-service.jar
+                    rm -f application.properties
+                    rm -f manage-auth.sh
+                '''
+            }
+        }
+    }
+}
