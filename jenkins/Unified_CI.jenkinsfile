@@ -54,62 +54,68 @@ pipeline {
             }
         }
 
-        stage('Setup PostgreSQL for Testing') {
-            steps {
-                script {
-                    echo "🐘 Setting up PostgreSQL for testing..."
+       stage('Setup PostgreSQL for Testing') {
+    steps {
+        script {
+            echo "🐘 Setting up PostgreSQL for testing..."
+            
+            try {
+                // Arrêter TOUS les containers PostgreSQL qui utilisent le port 5432
+                sh """
+                    # Trouver et arrêter tous les containers sur le port 5432
+                    docker ps -q --filter "publish=5432" | xargs -r docker stop
                     
-                    try {
-                        // Arrêter et supprimer l'ancien container s'il existe
-                        sh """
-                            docker stop ${POSTGRES_CONTAINER} 2>/dev/null || true
-                            docker rm ${POSTGRES_CONTAINER} 2>/dev/null || true
-                        """
-                        
-                        // Démarrer PostgreSQL
-                        sh """
-                            docker run -d \
-                                --name ${POSTGRES_CONTAINER} \
-                                -e POSTGRES_USER=${POSTGRES_USER} \
-                                -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
-                                -e POSTGRES_DB=${POSTGRES_DB} \
-                                -p 5432:5432 \
-                                postgres:15-alpine
-                        """
-                        
-                        // Attendre que PostgreSQL soit prêt
-                        echo "⏳ Waiting for PostgreSQL to be ready..."
-                        sh """
-                            timeout 30 bash -c 'until docker exec ${POSTGRES_CONTAINER} pg_isready -U ${POSTGRES_USER}; do
-                                echo "Waiting for PostgreSQL..."
-                                sleep 2
-                            done'
-                        """
-                        
-                        // Vérifier la connexion
-                        sh """
-                            docker exec ${POSTGRES_CONTAINER} psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "SELECT version();"
-                        """
-                        
-                        echo "✅ PostgreSQL is ready and running"
-                        
-                        // Stocker les infos de connexion
-                        BUILD_REGISTRY['postgres'] = [
-                            container: POSTGRES_CONTAINER,
-                            host: 'localhost',
-                            port: '5432',
-                            database: POSTGRES_DB,
-                            user: POSTGRES_USER,
-                            password: POSTGRES_PASSWORD
-                        ]
-                        
-                    } catch (Exception e) {
-                        echo "❌ Failed to setup PostgreSQL: ${e.message}"
-                        error("PostgreSQL setup failed")
-                    }
-                }
+                    # Supprimer les anciens containers postgres
+                    docker ps -aq --filter "name=postgres" | xargs -r docker rm -f
+                    
+                    # Attendre un peu
+                    sleep 2
+                """
+                
+                // Démarrer PostgreSQL
+                sh """
+                    docker run -d \
+                        --name ${POSTGRES_CONTAINER} \
+                        -e POSTGRES_USER=${POSTGRES_USER} \
+                        -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
+                        -e POSTGRES_DB=${POSTGRES_DB} \
+                        -p 5432:5432 \
+                        postgres:15-alpine
+                """
+                
+                // Attendre que PostgreSQL soit prêt
+                echo "⏳ Waiting for PostgreSQL to be ready..."
+                sh """
+                    timeout 30 bash -c 'until docker exec ${POSTGRES_CONTAINER} pg_isready -U ${POSTGRES_USER}; do
+                        echo "Waiting for PostgreSQL..."
+                        sleep 2
+                    done'
+                """
+                
+                // Vérifier la connexion
+                sh """
+                    docker exec ${POSTGRES_CONTAINER} psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "SELECT version();"
+                """
+                
+                echo "✅ PostgreSQL is ready and running"
+                
+                // Stocker les infos de connexion
+                BUILD_REGISTRY['postgres'] = [
+                    container: POSTGRES_CONTAINER,
+                    host: 'localhost',
+                    port: '5432',
+                    database: POSTGRES_DB,
+                    user: POSTGRES_USER,
+                    password: POSTGRES_PASSWORD
+                ]
+                
+            } catch (Exception e) {
+                echo "❌ Failed to setup PostgreSQL: ${e.message}"
+                error("PostgreSQL setup failed")
             }
         }
+    }
+}
 
         stage('Build Spring Services') {
             steps {
