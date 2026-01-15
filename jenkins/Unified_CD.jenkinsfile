@@ -196,23 +196,6 @@ esac
             }
         }
 
-        stage('Install sshpass') {
-            steps {
-                script {
-                    echo "📦 Checking sshpass installation..."
-                    sh '''
-                        if ! which sshpass > /dev/null 2>&1; then
-                            echo "Installing sshpass..."
-                            sudo apt-get update -qq
-                            sudo apt-get install -y sshpass
-                        else
-                            echo "✅ sshpass already installed"
-                        fi
-                    '''
-                }
-            }
-        }
-
         stage('Transfer Files to AlwaysData') {
             steps {
                 script {
