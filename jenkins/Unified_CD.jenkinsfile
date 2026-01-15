@@ -42,14 +42,12 @@ pipeline {
                     echo "📥 Getting auth-service JAR from CI build #${params.CI_BUILD_NUMBER}..."
                     
                     try {
-                        // Chemin vers les artifacts archivés
                         def artifactPath = "/var/lib/jenkins/jobs/SmartEventAI-CI/builds/${params.CI_BUILD_NUMBER}/archive"
                         
                         sh """
                             echo "Looking for JAR in archived artifacts..."
                             ls -la ${artifactPath}/
                             
-                            # Le JAR peut être dans target/ ou à la racine
                             if [ -f ${artifactPath}/target/auth-service-0.0.1-SNAPSHOT.jar ]; then
                                 echo "✅ Found JAR in target directory"
                                 cp ${artifactPath}/target/auth-service-0.0.1-SNAPSHOT.jar auth-service.jar
@@ -63,7 +61,6 @@ pipeline {
                                 exit 1
                             fi
                             
-                            # Vérifier
                             if [ ! -f auth-service.jar ]; then
                                 echo "❌ Failed to obtain JAR file"
                                 exit 1
@@ -89,7 +86,6 @@ pipeline {
                 script {
                     echo "📝 Creating configuration files..."
                     
-                    // Créer application.properties
                     writeFile file: 'application.properties', text: """
 # Server Configuration
 server.port=8081
@@ -116,7 +112,6 @@ management.endpoints.web.exposure.include=health,info,metrics
 management.endpoint.health.show-details=always
 """
                     
-                    // Créer script de gestion
                     writeFile file: 'manage-auth.sh', text: '''#!/bin/bash
 
 PID_FILE="auth-service.pid"
@@ -201,25 +196,43 @@ esac
             }
         }
 
+        stage('Install sshpass') {
+            steps {
+                script {
+                    echo "📦 Checking sshpass installation..."
+                    sh '''
+                        if ! which sshpass > /dev/null 2>&1; then
+                            echo "Installing sshpass..."
+                            sudo apt-get update -qq
+                            sudo apt-get install -y sshpass
+                        else
+                            echo "✅ sshpass already installed"
+                        fi
+                    '''
+                }
+            }
+        }
+
         stage('Transfer Files to AlwaysData') {
             steps {
                 script {
                     echo "📤 Transferring files to AlwaysData..."
                     
-                    withCredentials([sshUserPrivateKey(credentialsId: 'alwaysdata-ssh', keyFileVariable: 'SSH_KEY')]) {
+                    withCredentials([usernamePassword(credentialsId: 'alwaysdata-credentials', usernameVariable: 'SSH_USER', passwordVariable: 'SSH_PASS')]) {
                         sh """
                             # Créer le répertoire sur AlwaysData
-                            ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} "mkdir -p ${ALWAYSDATA_DEPLOY_DIR}"
+                            echo "Creating directory on AlwaysData..."
+                            sshpass -p "\${SSH_PASS}" ssh -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} "mkdir -p ${ALWAYSDATA_DEPLOY_DIR}"
                             
                             # Transférer les fichiers
                             echo "Transferring auth-service.jar..."
-                            scp -i \${SSH_KEY} -o StrictHostKeyChecking=no auth-service.jar ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
+                            sshpass -p "\${SSH_PASS}" scp -o StrictHostKeyChecking=no auth-service.jar ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
                             
                             echo "Transferring application.properties..."
-                            scp -i \${SSH_KEY} -o StrictHostKeyChecking=no application.properties ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
+                            sshpass -p "\${SSH_PASS}" scp -o StrictHostKeyChecking=no application.properties ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
                             
                             echo "Transferring manage-auth.sh..."
-                            scp -i \${SSH_KEY} -o StrictHostKeyChecking=no manage-auth.sh ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
+                            sshpass -p "\${SSH_PASS}" scp -o StrictHostKeyChecking=no manage-auth.sh ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST}:${ALWAYSDATA_DEPLOY_DIR}/
                             
                             echo "✅ All files transferred successfully"
                         """
@@ -233,9 +246,9 @@ esac
                 script {
                     echo "🚀 Deploying auth-service on AlwaysData..."
                     
-                    withCredentials([sshUserPrivateKey(credentialsId: 'alwaysdata-ssh', keyFileVariable: 'SSH_KEY')]) {
+                    withCredentials([usernamePassword(credentialsId: 'alwaysdata-credentials', usernameVariable: 'SSH_USER', passwordVariable: 'SSH_PASS')]) {
                         sh """
-                            ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
+                            sshpass -p "\${SSH_PASS}" ssh -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
                                 cd ${ALWAYSDATA_DEPLOY_DIR}
                                 
                                 echo "📋 Current directory contents:"
@@ -274,9 +287,9 @@ ENDSSH
                 script {
                     echo "🏥 Running health checks..."
                     
-                    withCredentials([sshUserPrivateKey(credentialsId: 'alwaysdata-ssh', keyFileVariable: 'SSH_KEY')]) {
+                    withCredentials([usernamePassword(credentialsId: 'alwaysdata-credentials', usernameVariable: 'SSH_USER', passwordVariable: 'SSH_PASS')]) {
                         sh """
-                            ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
+                            sshpass -p "\${SSH_PASS}" ssh -o StrictHostKeyChecking=no ${ALWAYSDATA_USER}@${ALWAYSDATA_HOST} << 'ENDSSH'
                                 cd ${ALWAYSDATA_DEPLOY_DIR}
                                 
                                 echo "=========================================="
