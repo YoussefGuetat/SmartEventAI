@@ -19,7 +19,7 @@ pipeline {
         POSTGRES_PORT = '5432'
         POSTGRES_DB = 'dztn_smartevent'
         POSTGRES_USER = 'dztn'
-        POSTGRES_PASSWORD = ''
+        POSTGRES_PASSWORD = 'DZtnDZtn@@22'
     }
 
     stages {
