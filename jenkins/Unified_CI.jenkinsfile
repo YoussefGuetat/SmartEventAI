@@ -54,7 +54,7 @@ pipeline {
             }
         }
 
-    /*   stage('Setup PostgreSQL for Testing') {
+   stage('Setup PostgreSQL for Testing') {
     steps {
         script {
             echo "🐘 Setting up PostgreSQL for testing..."
@@ -285,7 +285,7 @@ pipeline {
                     }
                 }
             }
-        }*/
+        }
 
         stage('Build Angular Frontends') {
             steps {
