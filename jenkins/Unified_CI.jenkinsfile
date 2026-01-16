@@ -22,7 +22,8 @@ pipeline {
         SONAR_LOGIN = credentials('sonar11')
 
         // Services
-        SPRING_SERVICES = 'config-server,eureka-server,gateway-service,auth-service,event-service'
+        //SPRING_SERVICES = 'config-server,eureka-server,gateway-service,auth-service,event-service'
+        SPRING_SERVICES = 'config-server'
         NODE_SERVICES = 'workflow-service'
         PYTHON_SERVICES = 'ai-service'
         ANGULAR_SERVICES = 'frontAdmin'
