@@ -169,4 +169,9 @@ Réponds UNIQUEMENT en JSON valide et en français, sans texte autour, dans ce f
 # =========================
 
 if __name__ == "__main__":
+    # Enregistrement Eureka
+    print("[AI-SERVICE] 🚀 Démarrage...")
+    t = threading.Thread(target=init_eureka, daemon=True)
+    t.start()
+    
     uvicorn.run("main:app", host="0.0.0.0", port=SERVICE_PORT, reload=False)
