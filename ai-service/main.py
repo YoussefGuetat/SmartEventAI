@@ -3,8 +3,9 @@ import requests
 import json
 import threading
 import uvicorn
+import os
 
-from models import EventData   # Ton Pydantic model
+from models import EventData
 
 import py_eureka_client.eureka_client as eureka_client
 
@@ -14,10 +15,12 @@ import py_eureka_client.eureka_client as eureka_client
 
 app = FastAPI(title="ai-service")
 
-# URL du serveur Ollama (que tu as lancé sur le port 30000)
-OLLAMA_URL = "http://localhost:30000/api/generate"
-MODEL = "mistral"
-
+# Variables d'environnement
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:30000/api/generate")
+MODEL = os.getenv("MODEL", "mistral")
+EUREKA_SERVER = os.getenv("EUREKA_SERVER", "https://eureka-server-production-9937.up.railway.app/eureka/")
+SERVICE_PORT = int(os.getenv("PORT", "8000"))
+SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
 
 # =========================
 #   Fonctions utilitaires
@@ -37,7 +40,6 @@ def call_ollama(prompt: str) -> str:
         response = requests.post(OLLAMA_URL, json=data, timeout=120)
         response.raise_for_status()
         body = response.json()
-        # Ollama renvoie un JSON du type {"model":"...","created_at":"...","response":"...","done":true,...}
         return body.get("response", "").strip()
     except requests.RequestException as e:
         raise HTTPException(
@@ -69,25 +71,24 @@ def init_eureka():
     Fonction appelée dans un thread séparé pour initialiser l'enregistrement Eureka.
     """
     try:
-        print("[AI-SERVICE] Initialisation Eureka dans un thread séparé...")
+        print(f"[AI-SERVICE] Initialisation Eureka: {EUREKA_SERVER}")
         eureka_client.init(
-            eureka_server="http://localhost:8761/eureka/",
-            app_name="ai-service",     # le nom qui apparaîtra dans Eureka
-            instance_port=8000,
-            instance_host="localhost"
+            eureka_server=EUREKA_SERVER,
+            app_name="ai-service",
+            instance_port=SERVICE_PORT,
+            instance_host=SERVICE_HOST
         )
-        print("[AI-SERVICE] Enregistré avec succès dans Eureka.")
+        print("[AI-SERVICE] ✅ Enregistré avec succès dans Eureka.")
     except Exception as e:
-        print(f"[AI-SERVICE] Erreur lors de l'enregistrement Eureka (thread): {e}")
+        print(f"[AI-SERVICE] ❌ Erreur lors de l'enregistrement Eureka: {e}")
 
 
 @app.on_event("startup")
 def register_to_eureka():
     """
     Hook FastAPI appelé au démarrage de l'application.
-    On lance ici l'enregistrement Eureka dans un thread séparé.
     """
-    print("[AI-SERVICE] Démarrage : tentative d'enregistrement dans Eureka...")
+    print("[AI-SERVICE] 🚀 Démarrage : tentative d'enregistrement dans Eureka...")
     t = threading.Thread(target=init_eureka, daemon=True)
     t.start()
 
@@ -96,15 +97,16 @@ def register_to_eureka():
 #   Endpoints IA
 # =========================
 
+@app.get("/health")
+def health():
+    """Endpoint de santé pour Eureka"""
+    return {"status": "UP"}
+
+
 @app.post("/generate-event-content")
 def generate_event_content(event: EventData):
     """
-    Génère :
-    - un titre d'événement
-    - une description
-    - un agenda
-
-    à partir des infos de l'événement.
+    Génère un titre, description et agenda pour l'événement.
     """
     prompt = f"""
 Tu es un assistant expert en création d'événements.
@@ -132,13 +134,13 @@ Réponds UNIQUEMENT en JSON valide et en français, sans texte autour, dans ce f
 
     raw = call_ollama(prompt)
     data = parse_json_or_raise(raw)
-    return data   # FastAPI renvoie ce dict en JSON
+    return data
 
 
 @app.post("/generate-marketing")
 def generate_marketing(event: EventData):
     """
-    Génère un texte marketing court et percutant pour promouvoir l'événement.
+    Génère un texte marketing pour l'événement.
     """
     prompt = f"""
 Tu es un expert en marketing événementiel.
@@ -159,13 +161,12 @@ Réponds UNIQUEMENT en JSON valide et en français, sans texte autour, dans ce f
 
     raw = call_ollama(prompt)
     data = parse_json_or_raise(raw)
-    return data   # {"marketing": "..."} sera renvoyé en JSON
+    return data
 
 
 # =========================
-#   Main (lancement local)
+#   Main
 # =========================
 
 if __name__ == "__main__":
-    # Lancement manuel du serveur (si tu lances `python main.py`)
-    uvicorn.run("main:app", host="localhost", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=SERVICE_PORT, reload=False)
