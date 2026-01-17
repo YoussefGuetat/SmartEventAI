@@ -7,7 +7,7 @@ import { Event, CreateEventRequest } from '../models/event.model';
   providedIn: 'root'
 })
 export class EventService {
-  private apiUrl = 'http://localhost:8080/events';
+  private apiUrl = 'https://gateway-service-production-b40f.up.railway.app/events';
 
   constructor(private http: HttpClient) { }
 
