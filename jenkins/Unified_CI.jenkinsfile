@@ -207,7 +207,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }*/
 
         stage('Build Python Services') {
             steps {
@@ -252,9 +252,9 @@ pipeline {
                     }
                 }
             }
-        }*/
+        }
 
-        stage('Build Node.js Services') {
+        /*stage('Build Node.js Services') {
             steps {
                 script {
                     def services = env.NODE_SERVICES.split(',')
@@ -286,7 +286,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }*/
 
       /*  stage('Build Angular Frontends') {
             steps {
