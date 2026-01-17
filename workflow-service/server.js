@@ -4,27 +4,19 @@ const {Eureka} = require('eureka-js-client');
 const app = express();
 app.use(express.json());
 
-// Utiliser les variables d'environnement
 const PORT = process.env.PORT || 3000;
-const EUREKA_HOST = process.env.EUREKA_HOST || 'localhost';
-const EUREKA_PORT = process.env.EUREKA_PORT || 8761;
-const EUREKA_PROTOCOL = process.env.EUREKA_PROTOCOL || 'http';
 const SERVICE_HOSTNAME = process.env.SERVICE_HOSTNAME || 'localhost';
-
-const EVENT_SERVICE_BASE_URL = process.env.EVENT_SERVICE_URL || 'http://localhost:8080/events';
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8080/ai/generate-event-content';
+const EVENT_SERVICE_URL = process.env.EVENT_SERVICE_URL || 'http://localhost:8093';
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
 app.post('/workflow/start/:eventId', async (req, res) => {
     const eventId = req.params.eventId;
     
     try {
-        // Récupérer l'evenement
-        const eventResponse = await axios.get(`${EVENT_SERVICE_BASE_URL}/getEvenementById/${eventId}`);
-    
+        const eventResponse = await axios.get(`${EVENT_SERVICE_URL}/evenement/getEvenementById/${eventId}`);
         const event = eventResponse.data;
         console.log("Evenement récupéré:", event);
         
-        // Appel a l'ia pour généré du contenu
         const aiRequestBody = {
             title: event.titleEvenement,
             date: event.dateEvenement,
@@ -33,11 +25,10 @@ app.post('/workflow/start/:eventId', async (req, res) => {
         };
         console.log("Corps de la requête AI:", aiRequestBody);
         
-        const aiResponse = await axios.post(AI_SERVICE_URL, aiRequestBody);
+        const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/generate-event-content`, aiRequestBody);
         const aiContent = aiResponse.data;
         console.log("Contenu généré par l'IA:", aiContent);
         
-        // Mettre à jour l'evenement avec le contenu généré
         const updatedEvent = {
             ...event,
             titleEvenement: aiContent.title || event.titleEvenement,
@@ -46,7 +37,7 @@ app.post('/workflow/start/:eventId', async (req, res) => {
             statusEvenement: 'GENERATED'
         };
         
-        const updateResponse = await axios.put(`${EVENT_SERVICE_BASE_URL}/updateEvenement`, updatedEvent);
+        const updateResponse = await axios.put(`${EVENT_SERVICE_URL}/evenement/updateEvenement`, updatedEvent);
         console.log("Evenement mis à jour:", updateResponse.data);
         
         return res.status(200).json({
@@ -57,14 +48,14 @@ app.post('/workflow/start/:eventId', async (req, res) => {
         });
     } catch (error) {
         console.error('Erreur dans le workflow : ', error.message);
-        return res.status(500).json({ error: 'Erreur serveur' });
+        return res.status(500).json({ error: 'Erreur serveur', details: error.message });
     }
 });
 
 app.get('/workflow/status/:eventId', async (req, res) => {
     const eventId = req.params.eventId;
     try {
-        const eventResponse = await axios.get(`${EVENT_SERVICE_BASE_URL}/getEvenementById/${eventId}`);
+        const eventResponse = await axios.get(`${EVENT_SERVICE_URL}/evenement/getEvenementById/${eventId}`);
         const event = eventResponse.data;
         return res.status(200).json({
             eventId,
@@ -76,40 +67,72 @@ app.get('/workflow/status/:eventId', async (req, res) => {
     }
 });
 
-const eureka = new Eureka({
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'UP' });
+});
+
+// Configuration Eureka simplifiée
+const eurekaClient = new Eureka({
     instance: {
-        app: 'workflow-service',
-        instanceId: `workflow-service:${PORT}`,
+        app: 'WORKFLOW-SERVICE',
+        instanceId: `workflow-service-${SERVICE_HOSTNAME}-${PORT}`,
         hostName: SERVICE_HOSTNAME,
-        ipAddr: '127.0.0.1',
-        statusPageUrl: `${EUREKA_PROTOCOL}://${SERVICE_HOSTNAME}:${PORT}/actuator/health`,
+        ipAddr: SERVICE_HOSTNAME,
+        statusPageUrl: `https://${SERVICE_HOSTNAME}/health`,
+        healthCheckUrl: `https://${SERVICE_HOSTNAME}/health`,
+        homePageUrl: `https://${SERVICE_HOSTNAME}/`,
         port: {
-            '$': PORT,
-            '@enabled': 'true',
+            '$': 443,
+            '@enabled': true,
         },
         vipAddress: 'workflow-service',
         dataCenterInfo: {
             '@class': 'com.netflix.appinfo.InstanceInfo$DefaultDataCenterInfo',
             name: 'MyOwn',
         },
+        registerWithEureka: true,
+        fetchRegistry: true,
+        leaseInfo: {
+            renewalIntervalInSecs: 30,
+            durationInSecs: 90,
+        },
     },
     eureka: {
-        host: EUREKA_HOST,
-        port: EUREKA_PORT,
+        host: 'eureka-server-production-9937.up.railway.app',
+        port: 443,
         servicePath: '/eureka/apps/',
-        ssl: EUREKA_PROTOCOL === 'https',
+        maxRetries: 10,
+        requestRetryDelay: 5000,
+        heartbeatInterval: 30000,
+        registryFetchInterval: 30000,
+        fetchRegistry: false,
+        filterUpInstances: true,
+        ssl: true,
+        useDns: false,
+    },
+    requestMiddleware: (requestOpts, done) => {
+        requestOpts.protocol = 'https:';
+        requestOpts.host = 'eureka-server-production-9937.up.railway.app';
+        requestOpts.port = 8761;
+        done(requestOpts);
     },
 });
 
-eureka.start(err => {
-    if (err) {
-        console.error('Erreur lors de l\'enregistrement à Eureka : ', err);
-        console.error('Error starting the Eureka Client', err);
+eurekaClient.start((error) => {
+    if (error) {
+        console.error('Erreur Eureka:', error);
     } else {
-        console.log('Enregistré avec succès auprès de Eureka');
+        console.log('✅ Enregistré avec succès auprès de Eureka');
     }
 });
 
+// Gérer l'arrêt propre
+process.on('SIGTERM', () => {
+    eurekaClient.stop(() => {
+        process.exit(0);
+    });
+});
+
 app.listen(PORT, () => {
-    console.log(`Workflow Service is running on port ${EUREKA_PROTOCOL}://${SERVICE_HOSTNAME}:${PORT}`);
+    console.log(`🚀 Workflow Service running on port ${PORT}`);
 });
