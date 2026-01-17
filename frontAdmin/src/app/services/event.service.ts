@@ -30,6 +30,6 @@ export class EventService {
   }
 
   startWorkflow(eventId: number): Observable<any> {
-    return this.http.post<any>(`http://localhost:8080/workflow/start/${eventId}`, {});
+    return this.http.post<any>(`https://gateway-service-production-b40f.up.railway.app/workflow/start/${eventId}`, {});
   }
 }
