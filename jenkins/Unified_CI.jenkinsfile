@@ -116,7 +116,7 @@ pipeline {
             }
         }
     }
-}*/
+}
 
         stage('Build Spring Services') {
             steps {
@@ -160,7 +160,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }*/
 
       /* stage('Test Spring Services with PostgreSQL') {
             steps {
@@ -252,7 +252,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }*/
 
         stage('Build Node.js Services') {
             steps {
@@ -288,7 +288,7 @@ pipeline {
             }
         }
 
-        stage('Build Angular Frontends') {
+      /*  stage('Build Angular Frontends') {
             steps {
                 script {
                     def services = env.ANGULAR_SERVICES.split(',')
