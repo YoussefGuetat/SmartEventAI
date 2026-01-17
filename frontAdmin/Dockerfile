@@ -1,17 +1,14 @@
-FROM node:20-alpine AS build
-
+# Stage 1: Build Angular
+FROM node:18 AS build
 WORKDIR /app
-
 COPY package*.json ./
-RUN npm ci
-
+RUN npm install
 COPY . .
-RUN npm run build -- --configuration production
+RUN npm run build --prod
 
+# Stage 2: Serve with Nginx
 FROM nginx:alpine
-
-COPY --from=build /app/dist/template-front /usr/share/nginx/html
-
+COPY --from=build /app/dist/frontAdmin /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 4201
-
 CMD ["nginx", "-g", "daemon off;"]
